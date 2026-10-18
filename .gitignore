@@ -2,3 +2,8 @@ node_modules/
 tests/screenshots/
 coverage/
 .DS_Store
+.env
+.env.*
+*.tuning.json
+tab-land-tuning*.json
+.private/

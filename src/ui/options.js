@@ -267,5 +267,17 @@ for (const r of document.querySelectorAll('input[name=groupingMode]')) {
 }
 syncUndoRegroupBtn();
 
+// ---------- tuning export ----------
+$('exportTuning').onclick = async () => {
+  const r = await chrome.runtime.sendMessage({ type: 'exportTuning' });
+  if (r?.error) { $('exportResult').textContent = r.error; $('exportResult').className = 'hint err'; return; }
+  const blob = new Blob([JSON.stringify(r, null, 1)], { type: 'application/json' });
+  const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(blob), download: 'tab-land-tuning.json' });
+  document.body.append(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  $('exportResult').textContent = `Saved ${r.tabs.length} tabs to your Downloads folder as tab-land-tuning.json.`;
+  $('exportResult').className = 'hint ok';
+};
+
 loadSettings().then((s) => { savedMode = s.groupingMode; fill(s); });
 chrome.runtime.sendMessage({ type: 'useCaseUsage' }).then((r) => { if (r && !r.error) { usage = r; renderUseCases(); } }).catch(() => {});

@@ -9,6 +9,7 @@ import { search, openResult, focusTab } from './palette.js';
 import { listContexts, parkGroup, resumeContext, dropContext } from './contexts.js';
 import { learnSuggestions, applyLearn, autoTune, useCaseUsage } from './learning.js';
 import { guard } from './util.js';
+import { exportTuning } from './tuning.js';
 
 export const ALARM = 'tab-land-auto';
 export const LEARN_ALARM = 'tab-land-learn';
@@ -59,6 +60,7 @@ export function createApp(deps) {
       return { ok: true, models: (r?.data || r?.models || []).map((x) => x?.id || x?.name || x).filter((x) => typeof x === 'string') };
     },
     learn: () => learnSuggestions(ctx),
+    exportTuning: () => exportTuning(ctx),
     sweep: () => mutate(() => sweepDuplicates(ctx)),
     useCaseUsage: async () => { await ctx.ready(); return useCaseUsage(ctx); },
     applyLearn: (m) => mutate(() => applyLearn(ctx, m.changes || {})),
