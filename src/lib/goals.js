@@ -54,7 +54,8 @@ export function tabTerms(tab, { pageText = '' } = {}) {
   for (const w of pathOwnerWords(tab.title, tab.url)) site.add(w);
   const add = (raw, w) => {
     const lower = raw.toLowerCase();
-    if (lower.length < 3 || STOP.has(lower) || site.has(lower) || /^\d+$/.test(lower)) return;
+    const short = lower.length < 3 && !/^[a-z]\d$/.test(lower); // keep Q4, v3, H1, P0
+    if (short || STOP.has(lower) || site.has(lower) || /^\d+$/.test(lower)) return;
     terms.set(lower, (terms.get(lower) || 0) + w);
     if (!display.has(lower)) display.set(lower, raw);
   };
@@ -194,4 +195,81 @@ export function stableName(ids, tabsById, titleById, managed) {
   const [gid, n] = [...counts].sort((a, b) => b[1] - a[1])[0] || [];
   const title = gid != null ? titleById.get(gid) : null;
   return title && n * 2 >= ids.length && managed.has(title.toLowerCase()) ? title : null;
+}
+
+
+// ---------------------------------------------------------------- iterative grouping
+//
+// One strict pass is precise but leaves many tabs loose. Iterate, loosening step by step:
+//   1. strict clusters (high precision)
+//   2. attach loose tabs to the nearest goal, comparing against the goal's whole profile
+//      (all its tabs' terms), not one tab; profiles grow as tabs join; repeat until stable
+//   3. looser clusters among what's left, then attach again
+// Each goal records the pass that formed it, so callers can trust early passes more.
+
+function centroid(ids, docs) {
+  const c = new Map();
+  for (const id of ids) for (const [k, v] of docs.get(id).terms) c.set(k, (c.get(k) || 0) + v);
+  return c;
+}
+
+/** How well a loose tab fits a goal: direct evidence to its tabs plus fit with the goal's profile. */
+export function attachScore(id, goalIds, graph, profile) {
+  let sum = 0, max = 0, real = 0;
+  for (const g of goalIds) {
+    const w = graph.w(id, g); sum += w; if (w > max) max = w;
+    // Opening at the same moment (e.g. a session restore) is not evidence on its own.
+    const why = graph.why ? graph.why(id, g) : null;
+    real = Math.max(real, why ? why.total - why.burst : w);
+  }
+  const mean = sum / goalIds.length;
+  const fit = cosine(graph.docs.get(id).terms, profile, graph.idf);
+  const ent = [...graph.docs.get(id).entities].some((e) => goalIds.some((g) => graph.docs.get(g).entities.has(e))) ? 0.3 : 0;
+  if (real < 0.1 && fit < 0.1 && !ent) return 0;
+  return 0.4 * mean + 0.4 * max + 0.6 * fit + ent;
+}
+
+export const ITERATIVE = { strict: 0.3, loose: 0.18, attach: 0.15, maxPasses: 4, maxSize: 15 };
+
+/**
+ * @returns {Array<{ids:number[], pass:number}>}  pass 1 = strict cluster, 2 = attached, 3 = loose cluster
+ */
+export function iterativeGoals(ids, graph, opts = {}) {
+  const o = { ...ITERATIVE, ...opts };
+  const goals = clusterGoals(ids, graph.w, { threshold: o.strict, maxSize: o.maxSize }).map((c) => ({ ids: c, pass: 1 }));
+  const taken = new Set(goals.flatMap((g) => g.ids));
+
+  const attachRound = () => {
+    let changed = false;
+    for (let pass = 0; pass < o.maxPasses; pass++) {
+      const profiles = goals.map((g) => centroid(g.ids, graph.docs));
+      let moved = 0;
+      for (const id of ids) {
+        if (taken.has(id)) continue;
+        /** @type {{i:number, s:number}|null} */
+        let best = null;
+        goals.forEach((g, i) => {
+          if (g.ids.length >= o.maxSize) return;
+          const s = attachScore(id, g.ids, graph, profiles[i]);
+          if (s >= o.attach && (!best || s > best.s)) best = { i, s };
+        });
+        if (best) { goals[best.i].ids.push(id); goals[best.i].attached = (goals[best.i].attached || 0) + 1; taken.add(id); moved++; }
+      }
+      if (!moved) break;
+      changed = true;
+    }
+    return changed;
+  };
+
+  attachRound();
+  // Looser clusters among what's still loose, then let those absorb neighbours too.
+  const rest = ids.filter((id) => !taken.has(id));
+  // The loose pass only trusts real evidence: timing and same-site guesses alone don't count.
+  const realW = graph.why ? (a, b) => { const r = graph.why(a, b); return r.total - r.burst - (r.lineage < 0.1 ? r.lineage : 0); } : graph.w;
+  for (const c of clusterGoals(rest, realW, { threshold: o.loose, maxSize: o.maxSize })) {
+    goals.push({ ids: c, pass: 3 });
+    c.forEach((id) => taken.add(id));
+  }
+  attachRound();
+  return goals.sort((a, b) => b.ids.length - a.ids.length);
 }

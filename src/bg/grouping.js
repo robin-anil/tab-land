@@ -8,7 +8,7 @@ import { siteKey, isWebUrl } from '../lib/url.js';
 import { hashColor } from '../lib/settings.js';
 import { buildLineage } from '../lib/lineage.js';
 import { planGroups, relatedContext } from '../lib/grouping.js';
-import { goalGraph, clusterGoals, nameGoal, stableName, cohesion } from '../lib/goals.js';
+import { goalGraph, iterativeGoals, nameGoal, stableName, cohesion } from '../lib/goals.js';
 import { recordAssignments } from '../lib/learn.js';
 import { runAll, buildGroupingRequests, parseGroupingResponses, buildGoalRequests, parseGoalResponses } from '../lib/jev.js';
 import { snapshot } from './context.js';
@@ -45,8 +45,9 @@ export async function groupTabs(ctx) {
   if (s.groupingMode === 'goals') {
     const pageText = await pageTextFor(ctx, candidates).catch((e) => { ctx.log(e, 'pageText'); return new Map(); });
     const graph = goalGraph(candidates, { edges, tabPairs: ctx.state.tabPairs, now, halfLifeMs: ctx.hl(), pageText });
-    goals = clusterGoals(candidates.map((t) => t.id), graph.w, { threshold: s.goalThreshold }).map((ids) => ({
-      ids,
+    // Iterative: strict clusters, then attach loose tabs to the nearest goal, then looser clusters.
+    goals = iterativeGoals(candidates.map((t) => t.id), graph, { strict: s.goalThreshold }).map(({ ids, pass }) => /** @type {any} */ ({
+      ids, pass,
       name: stableName(ids, byId, titleById, managed) || nameGoal(ids, graph.docs, graph.idf),
       cohesion: cohesion(ids, graph.w),
       via: 'heuristic',
@@ -121,7 +122,8 @@ export async function groupTabs(ctx) {
   ctx.saveSoon();
   return {
     groups: applied, via, mode: s.groupingMode, error: errors[0] || null,
-    goals: goals.map((g) => ({ name: g.name, count: g.ids.length, via: g.via, p: g.p ?? null, cohesion: +g.cohesion.toFixed(2) })),
+    goals: goals.map((g) => ({ name: g.name, count: g.ids.length, via: g.via, pass: g.pass, p: g.p ?? null, cohesion: +g.cohesion.toFixed(2) })),
+    coverage: { candidates: candidates.length, grouped: applied.reduce((a, g) => a + g.count, 0) },
   };
 }
 
