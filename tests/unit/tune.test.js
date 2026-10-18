@@ -45,3 +45,21 @@ test('evaluate splits coverage by pass', async () => {
   expect(Object.keys(e.byPass).length).toBeGreaterThan(0);
   expect(e.grouped).toBe(Object.values(e.byPass).reduce((a, b) => a + b, 0));
 });
+
+test('a saved Jev cache lets a second run finish without calling Jev again, and holds only ids and numbers', async () => {
+  const { fetchImpl, calls } = mockJev((body) => {
+    const answers = {};
+    for (const [q, spec] of Object.entries(body.questions)) answers[q] = spec.type === 'noul' ? { noul: 0.7 } : { choice: 'none', confidence: 0.9 };
+    return { answers };
+  });
+  const cache = { goals: {}, missed: {} };
+  const first = await tune(exp, { apiKey: 'k', fetchImpl, retryDelay: 1, cache });
+  const used = calls.length;
+  expect(used).toBeGreaterThan(0);
+  const saved = JSON.parse(JSON.stringify(cache));
+  const second = await tune(exp, { apiKey: 'k', fetchImpl, retryDelay: 1, cache: saved });
+  expect(calls.length).toBe(used);
+  expect(second.best).toEqual(first.best);
+  const text = JSON.stringify(saved);
+  for (const { tab } of WORKDAY) { expect(text).not.toContain(tab.url); if (tab.title) expect(text).not.toContain(tab.title); }
+});

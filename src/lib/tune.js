@@ -28,18 +28,24 @@ export function prepare(exp) {
  *   agreement — for each goal, Jev's mean probability that each tab belongs (goal p for pairs)
  *   missed    — loose tabs Jev confidently places into one of the goals (should have been grouped)
  */
-export function judge(prep, { apiKey, fetchImpl, retryDelay } = {}) {
-  const goalCache = new Map();
+/** @param {any} prep @param {{ apiKey?: string, fetchImpl?: any, retryDelay?: number, cache?: any }} [opts] */
+export function judge(prep, { apiKey, fetchImpl, retryDelay, cache = null } = {}) {
+  // `cache` ({ goals: {key: p}, missed: {key: n} }) can be saved between runs; keys are tab ids, values numbers.
+  const store = cache || { goals: {}, missed: {} };
+  store.goals ||= {}; store.missed ||= {};
+  const goalCache = { has: (k) => k in store.goals, get: (k) => store.goals[k], set: (k, v) => { store.goals[k] = v; } };
   const settings = { ...prep.settings, jevApiKey: apiKey };
   const opts = { fetchImpl, retryDelay, concurrency: 4 };
   let calls = 0, errors = 0;
+  const kinds = {};
+  const tally = (errs) => { for (const e of errs) { const k = e?.status ? `http ${e.status}` : e?.name === 'AbortError' || /timed out/i.test(e?.message || '') ? 'timeout' : e?.status === 0 ? 'network' : 'error'; kinds[k] = (kinds[k] || 0) + 1; } };
 
   async function goalAgreement(goals) {
     const todo = goals.filter((g) => !goalCache.has(g.key));
     if (todo.length) {
       const reqs = buildGoalRequests(todo.map((g) => ({ tabs: g.tabs })), { settings });
       const { results, errors: errs } = await runAll(settings, reqs, opts);
-      calls += reqs.length; errors += errs.length;
+      calls += reqs.length; errors += errs.length; tally(errs);
       parseGoalResponses(reqs, results).forEach((a, i) => {
         if (!a) return;
         const ps = [...a.members.values()];
@@ -53,17 +59,21 @@ export function judge(prep, { apiKey, fetchImpl, retryDelay } = {}) {
 
   async function missed(goals, loose) {
     if (!loose.length || !goals.length) return { missed: 0, judged: 0 };
+    const mkey = goals.map((g) => g.key).join('|') + '#' + loose.map((t) => t.id).sort((a, b) => a - b).join(',');
+    if (mkey in store.missed) return store.missed[mkey];
     const goalOptions = goals.map((g, i) => ({ name: `Goal ${i + 1}`, samples: g.tabs.map((t) => t.title) }));
     const reqs = buildGroupingRequests(loose, { useCases: [], goals: goalOptions, settings, existingGroups: [] });
     const { results, errors: errs } = await runAll(settings, reqs, opts);
-    calls += reqs.length; errors += errs.length;
+    calls += reqs.length; errors += errs.length; tally(errs);
     const picks = parseGroupingResponses(reqs, results);
     let n = 0;
     for (const v of picks.values()) if (v.name && v.name.startsWith('Goal ') && (v.confidence ?? 0) >= 0.6) n++;
-    return { missed: n, judged: picks.size };
+    const out = { missed: n, judged: picks.size };
+    if (!errs.length) store.missed[mkey] = out;
+    return out;
   }
 
-  return { goalAgreement, missed, stats: () => ({ calls, errors }) };
+  return { goalAgreement, missed, cache: store, stats: () => ({ calls, errors, kinds }) };
 }
 
 /** Run one config: group, then (optionally) have Jev judge it. Numbers only. */
@@ -98,9 +108,10 @@ export async function evaluate(prep, cfg, judgeFns = null) {
   return out;
 }
 
-export async function tune(exp, { grid = QUICK_GRID, apiKey = null, fetchImpl = undefined, retryDelay = undefined, onProgress = () => {} } = {}) {
+/** @param {any} exp @param {{ grid?: any[], apiKey?: string|null, fetchImpl?: any, retryDelay?: number, cache?: any, onProgress?: (i: number, n: number) => void }} [opts] */
+export async function tune(exp, { grid = QUICK_GRID, apiKey = null, fetchImpl = undefined, retryDelay = undefined, cache = null, onProgress = () => {} } = {}) {
   const prep = prepare(exp);
-  const j = apiKey ? judge(prep, { apiKey, fetchImpl, retryDelay }) : null;
+  const j = apiKey ? judge(prep, { apiKey, fetchImpl, retryDelay, cache }) : null;
   const strictOnly = await evaluate(prep, { strict: ITERATIVE.strict, attach: 9, loose: 9 }, j);
   const current = await evaluate(prep, { ...ITERATIVE, strict: prep.settings.goalThreshold }, j);
   const results = [];

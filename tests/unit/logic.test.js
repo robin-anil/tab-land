@@ -219,3 +219,20 @@ test('learning: evidence, discovery, suggestions', () => {
   const fewer = suggestChanges({ useCases, stats: { Hiring: { n: 3, t: now, sites: {} } }, clusters: [], now });
   assert.deepEqual(fewer.retire, [], 'no retirements without enough evidence');
 });
+
+test('grouping requests stay under Jev\'s size limit when there are many goals, and still ask about every tab', () => {
+  const settings = { ...DEFAULTS, jevApiKey: 'k' };
+  const tabs = Array.from({ length: 53 }, (_, i) => ({ id: i + 1, title: `Loose tab number ${i} about something`, url: `https://site${i % 7}.example.com/page/${i}` }));
+  const goals = Array.from({ length: 89 }, (_, i) => ({ name: `Goal ${i + 1}`, samples: [`Sample title ${i} one with some length`, `Sample ${i} two`, `Sample ${i} three`] }));
+  const reqs = buildGroupingRequests(tabs, { useCases: DEFAULTS.useCases, goals, settings });
+  assert.ok(reqs.length > 3); // 20 per request would be ~300 KB each
+  for (const r of reqs) assert.ok(JSON.stringify(r.body).length <= 80000);
+  const asked = new Set(reqs.flatMap((r) => Object.values(r.idMap)));
+  assert.equal(asked.size, 53);
+  const many = Array.from({ length: 300 }, (_, i) => ({ name: `Goal ${i + 1}`, samples: [] }));
+  const big = buildGroupingRequests(tabs.slice(0, 2), { useCases: DEFAULTS.useCases, goals: many, settings });
+  assert.equal(Object.keys(big[0].body.questions.tab_1.criteria).length, 255); // Jev's Choice limit, with `none` kept
+  assert.ok('none' in big[0].body.questions.tab_1.criteria);
+  // A handful of options still uses the normal batch size.
+  assert.equal(buildGroupingRequests(tabs, { useCases: DEFAULTS.useCases, settings }).length, 3);
+});

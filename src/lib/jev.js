@@ -105,7 +105,14 @@ function clip(s, n) { s = String(s).replace(/\s+/g, ' ').trim(); return s.length
  * @param {{useCases, existingGroups:string[], goals?:Array<{name:string, samples?:string[]}>, settings, related?:Map<number,{openedFrom?:number, usedWith?:number[], group?:string}>, chunk?:number}} o
  * @returns {Array<{body:any, idMap:any, options:any}>}
  */
-export function buildGroupingRequests(tabs, { useCases, existingGroups = [], goals = [], settings, related = new Map(), chunk = 20 }) {
+// Jev's context limits (docs.typesafe.ai/models#context-length): 64k tokens per request (state plus
+// all questions) and 32k per question; over that it answers 400 `max_tokens_exceeded`. Every question
+// repeats the full option list, so with many goals we send fewer tabs per request. 80 KB of JSON is
+// roughly 20-27k tokens, well inside the limit. A Choice question takes at most 255 options.
+export const MAX_REQUEST_CHARS = 80000;
+export const MAX_CHOICE_OPTIONS = 255;
+
+export function buildGroupingRequests(tabs, { useCases, existingGroups = [], goals = [], settings, related = new Map(), chunk = 20, maxChars = MAX_REQUEST_CHARS }) {
   const shown = tabs.slice(0, 150);
   const num = new Map(shown.map((t, i) => [t.id, i + 1]));
   const lines = shown.map((t) => {
@@ -142,14 +149,18 @@ export function buildGroupingRequests(tabs, { useCases, existingGroups = [], goa
     options[`ex${i}`] = g;
     criteria[`ex${i}`] = `${g}: an existing tab group the user already made`;
   });
+  // Leave room for `none`: goals come first, so it's the generic categories that get trimmed.
+  for (const k of Object.keys(options).slice(MAX_CHOICE_OPTIONS - 1)) { delete options[k]; delete criteria[k]; }
   options.none = null;
   criteria.none = 'None of these: a one-off tab that does not belong with others';
 
+  const qSize = JSON.stringify({ type: 'choice', instructions: 'x'.repeat(200), criteria }).length + 16;
+  const fit = Math.max(1, Math.min(chunk, Math.floor((maxChars - state.length - 200) / qSize)));
   const requests = [];
-  for (let s = 0; s < shown.length; s += chunk) {
+  for (let s = 0; s < shown.length; s += fit) {
     const questions = {};
     const idMap = {};
-    for (const t of shown.slice(s, s + chunk)) {
+    for (const t of shown.slice(s, s + fit)) {
       const q = `tab_${num.get(t.id)}`;
       idMap[q] = t.id;
       questions[q] = {

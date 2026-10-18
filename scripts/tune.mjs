@@ -2,9 +2,9 @@
 // Tune Tab Land's goal grouping on your real tabs, with Jev as the judge.
 //
 //   1. In Tab Land → Settings → "Export tabs for tuning" (saves tab-land-tuning.json to Downloads)
-//   2. node scripts/tune.mjs [path/to/tab-land-tuning.json] [--env path/to/.env] [--full] [--no-jev]
+//   2. node scripts/tune.mjs [path/to/tab-land-tuning.json] [--env path/to/.env] [--full] [--no-jev] [--fresh]
 //
-// The Jev key is read from TYPESAFE_API_KEY (or JEV_API_KEY / TYPESAFE_AI_API_KEY) in the .env file
+// The Jev key is read from TYPESAFE_API_KEY (or TYPESAFE_AI_KEY / JEV_API_KEY / TYPESAFE_AI_API_KEY) in the .env file
 // or the environment. Output is numbers only — no titles, no URLs — and is also written to
 // .private/tuning-result.json (git-ignored).
 import fs from 'node:fs';
@@ -29,7 +29,7 @@ function readEnv(p) {
 }
 const envFile = opt('--env') || [path.join(root, '.env'), path.join(process.cwd(), '.env')].find((p) => fs.existsSync(p));
 const env = { ...(envFile ? readEnv(envFile) : {}), ...process.env };
-const apiKey = flag('--no-jev') ? null : env.TYPESAFE_API_KEY || env.JEV_API_KEY || env.TYPESAFE_AI_API_KEY || null;
+const apiKey = flag('--no-jev') ? null : env.TYPESAFE_API_KEY || env.TYPESAFE_AI_KEY || env.JEV_API_KEY || env.TYPESAFE_AI_API_KEY || null;
 
 if (!fs.existsSync(file)) { console.error(`No export at ${file}. Use Settings → "Export tabs for tuning" first.`); process.exit(1); }
 const exp = JSON.parse(fs.readFileSync(file, 'utf8'));
@@ -37,7 +37,14 @@ if (exp.kind !== 'tab-land-tuning') { console.error('That file is not a Tab Land
 
 console.log(`Tabs: ${exp.tabs.length}   Jev judge: ${apiKey ? 'on' : 'off'}${envFile && apiKey ? ` (key from ${path.basename(envFile)})` : ''}`);
 const grid = flag('--full') ? FULL_GRID : QUICK_GRID;
-const r = await tune(exp, { grid, apiKey, onProgress: (i, n) => process.stdout.write(`\r  tried ${i}/${n} settings`) });
+// Jev's answers are cached (tab ids → numbers) so a stopped run picks up where it left off.
+fs.mkdirSync(path.join(root, '.private'), { recursive: true });
+const cacheFile = path.join(root, '.private', 'jev-cache.json');
+let cache = { goals: {}, missed: {} };
+try { if (!flag('--fresh')) cache = JSON.parse(fs.readFileSync(cacheFile, 'utf8')); } catch { /* start fresh */ }
+const saveCache = () => fs.writeFileSync(cacheFile, JSON.stringify(cache));
+const r = await tune(exp, { grid, apiKey, cache, onProgress: (i, n) => { saveCache(); process.stdout.write(`\r  tried ${i}/${n} settings`); } });
+saveCache();
 process.stdout.write('\n\n');
 
 const pct = (x) => (x == null ? '   -  ' : `${(x * 100).toFixed(0).padStart(4)}%`);
@@ -47,9 +54,8 @@ row('Current settings', r.current);
 row('Best', r.best);
 console.log('\nTop 5:');
 for (const x of r.results.slice(0, 5)) row('', x);
-if (r.jev) console.log(`\nJev calls: ${r.jev.calls}, errors: ${r.jev.errors}`);
+if (r.jev) console.log(`\nJev calls: ${r.jev.calls}, errors: ${r.jev.errors}${r.jev.errors ? ` (${Object.entries(r.jev.kinds || {}).map(([k, n]) => `${k}: ${n}`).join(', ')})` : ''}`);
 
-fs.mkdirSync(path.join(root, '.private'), { recursive: true });
 const outFile = path.join(root, '.private', 'tuning-result.json');
 fs.writeFileSync(outFile, JSON.stringify({ at: new Date().toISOString(), ...r }, null, 2));
 console.log(`\nSaved numbers to ${path.relative(process.cwd(), outFile)}`);
