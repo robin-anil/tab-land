@@ -1,0 +1,258 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tab Land Brand Kit</title>
+<style>
+@font-face { font-family: "Unbounded"; src: url("../../src/ui/fonts/unbounded-latin-600-normal.woff2") format("woff2"); font-weight: 600; }
+@font-face { font-family: "Onest"; src: url("../../src/ui/fonts/onest-latin-wght-normal.woff2") format("woff2"); font-weight: 100 900; }
+:root {
+  --ink: #141829; --ink-2: #4a5069; --ink-3: #8a90a8; --paper: #ffffff; --mist: #f5f6fa; --line: #e6e9f2; --canvas: #eceef4;
+  --blue: #5e8bff; --green: #34c27a; --coral: #ff6b7a;
+  --sky: #8ab4ff; --mint: #86efac; --blush: #ff8b94; --butter: #ffe08a; --orchid: #f49be6; --lilac: #b9a4ff;
+  --display: "Unbounded", system-ui, sans-serif; --text: "Onest", system-ui, sans-serif;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--canvas); color: var(--ink); font: 14px/1.5 var(--text); -webkit-font-smoothing: antialiased; }
+.board { width: 1600px; padding: 36px; display: grid; grid-template-columns: repeat(3, 1fr); grid-auto-rows: 330px; gap: 16px; }
+.p { position: relative; overflow: hidden; background: var(--paper); border-radius: 18px; padding: 26px 28px; isolation: isolate; }
+.label { position: absolute; left: 28px; bottom: 20px; font-size: 11px; color: var(--ink-3); letter-spacing: .01em; }
+.num { position: absolute; right: 28px; bottom: 20px; font-size: 11px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.wm { font-family: var(--display); font-weight: 600; letter-spacing: -0.02em; }
+
+/* Background light. The only place soft color is allowed. */
+.glow { position: absolute; inset: 0; z-index: -1; pointer-events: none; }
+.glow i { position: absolute; border-radius: 50%; filter: blur(46px); opacity: .5; }
+
+/* 1 cover */
+.cover { display: grid; place-items: center; }
+.cover .lockup { display: flex; align-items: center; gap: 22px; }
+.cover .lockup svg { width: 104px; height: 104px; }
+.cover .wm { font-size: 46px; }
+
+/* 2 construction */
+.cons { display: grid; grid-template-columns: 1fr 1fr; align-items: center; gap: 10px; }
+.cons svg { width: 100%; height: 250px; }
+.cons dl { margin: 0; display: grid; gap: 12px; align-self: center; }
+.cons dt { font-size: 11px; color: var(--ink-3); }
+.cons dd { margin: 0; font-weight: 550; }
+
+/* 3 browser */
+.browser { padding: 30px 28px 0; }
+.win { border-radius: 12px; background: var(--paper); box-shadow: 0 1px 2px rgba(20,24,41,.06), 0 18px 40px -22px rgba(20,24,41,.35); border: 1px solid var(--line); overflow: hidden; }
+.strip { display: flex; align-items: flex-end; gap: 4px; padding: 8px 10px 0; background: var(--mist); }
+.dots { display: flex; gap: 5px; padding: 0 8px 10px 2px; }
+.dots b { width: 9px; height: 9px; border-radius: 50%; background: #d9dce6; }
+.gpill { font-size: 11px; font-weight: 650; padding: 2px 8px; border-radius: 6px; color: #fff; margin-bottom: 7px; }
+.t { font-size: 11.5px; padding: 6px 10px; border-radius: 8px 8px 0 0; color: var(--ink-2); white-space: nowrap; border-top: 2px solid transparent; }
+.t.on { background: var(--paper); color: var(--ink); font-weight: 550; }
+.url { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-bottom: 1px solid var(--line); }
+.url .bar { flex: 1; background: var(--mist); border-radius: 999px; padding: 5px 12px; font-size: 11.5px; color: var(--ink-2); }
+.url svg { width: 20px; height: 20px; }
+.page { height: 150px; position: relative; }
+.pop { position: absolute; right: 12px; top: 6px; width: 220px; background: var(--paper); border: 1px solid var(--line); border-radius: 12px; padding: 12px; box-shadow: 0 18px 40px -18px rgba(20,24,41,.4); }
+.pop .hd { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+.pop .hd svg { width: 22px; height: 22px; }
+.pop .hd .wm { font-size: 12px; }
+.btn-ink { display: block; text-align: center; background: var(--ink); color: #fff; border-radius: 9px; font-weight: 600; font-size: 12px; padding: 8px 0; box-shadow: 0 6px 18px -8px rgba(94,139,255,.7); }
+.pop .row { display: flex; justify-content: space-between; font-size: 11px; color: var(--ink-2); margin-top: 9px; }
+
+/* 4 essence */
+.essence { display: flex; flex-direction: column; justify-content: center; }
+.essence h2 { font-family: var(--display); font-weight: 600; font-size: 40px; line-height: 1.12; letter-spacing: -0.03em; margin: 0; max-width: 11ch; }
+.essence p { margin: 14px 0 0; color: var(--ink-2); font-size: 15px; max-width: 34ch; }
+
+/* 5 color */
+.color h3, .type h3, .detail h3 { margin: 0 0 14px; font-size: 13px; font-weight: 600; color: var(--ink-2); }
+.solid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin-bottom: 18px; }
+.sw { height: 76px; border-radius: 10px; padding: 8px; display: flex; flex-direction: column; justify-content: flex-end; font-size: 10.5px; line-height: 1.3; font-weight: 550; }
+.sw span { opacity: .75; font-weight: 450; font-variant-numeric: tabular-nums; }
+.glows { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; }
+.gw { text-align: center; font-size: 10.5px; color: var(--ink-2); }
+.gw .orb { height: 56px; border-radius: 50%; margin: 0 auto 6px; width: 56px; filter: blur(7px); opacity: .85; }
+
+/* 6 type */
+.type .spec { font-family: var(--display); font-weight: 600; font-size: 74px; line-height: 1; letter-spacing: -0.03em; margin: 4px 0 8px; }
+.type .alpha { font-family: var(--display); font-size: 15px; color: var(--ink-2); letter-spacing: .02em; }
+.type .body { margin-top: 18px; display: grid; grid-template-columns: auto 1fr; gap: 6px 18px; align-items: baseline; }
+.type .body b { font-size: 11px; color: var(--ink-3); font-weight: 500; }
+.type .body .o { font-size: 22px; font-weight: 500; letter-spacing: -0.01em; }
+
+/* 7 store tile */
+.store { display: grid; place-items: center; }
+.tile { width: 380px; height: 240px; border-radius: 16px; position: relative; overflow: hidden; isolation: isolate; background: var(--paper); border: 1px solid var(--line); display: flex; flex-direction: column; justify-content: center; padding: 0 30px; gap: 12px; box-shadow: 0 20px 50px -30px rgba(20,24,41,.4); }
+.tile .lk { display: flex; align-items: center; gap: 12px; }
+.tile svg { width: 52px; height: 52px; }
+.tile .wm { font-size: 24px; }
+.tile p { margin: 0; font-size: 14px; color: var(--ink-2); max-width: 26ch; }
+.icons { position: absolute; right: 22px; top: 22px; display: flex; align-items: flex-end; gap: 10px; }
+
+/* 8 atmosphere */
+.atmo .wm { position: absolute; left: 28px; top: 24px; font-size: 13px; }
+.atmo .big { position: absolute; left: 50%; top: 50%; width: 220px; height: 220px; transform: translate(-50%, -50%); }
+.atmo .rule { position: absolute; left: 28px; right: 28px; top: 210px; height: 2px; background: var(--ink); border-radius: 2px; opacity: .9; }
+.atmo .hz { position: absolute; left: 28px; top: 150px; display: flex; align-items: flex-end; gap: 10px; }
+.atmo .hz i { display: block; width: 46px; border-radius: 10px 10px 0 0; }
+
+/* 9 detail */
+.detail .chips { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
+.chip { display: inline-flex; align-items: center; height: 24px; padding: 0 10px; border-radius: 7px; font-size: 12px; font-weight: 600; }
+.groups { display: flex; gap: 8px; margin-bottom: 16px; }
+.grp { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 12px; border-radius: 8px; font-size: 12px; font-weight: 650; color: #fff; }
+.li { display: grid; grid-template-columns: 16px 1fr auto; gap: 10px; align-items: center; padding: 9px 10px; border-radius: 10px; background: var(--mist); margin-bottom: 6px; }
+.li .cb { width: 16px; height: 16px; border-radius: 4px; background: var(--blue); position: relative; }
+.li .cb::after { content: ""; position: absolute; left: 5px; top: 2px; width: 4px; height: 8px; border: solid #fff; border-width: 0 2px 2px 0; transform: rotate(45deg); }
+.li .tt { font-weight: 550; font-size: 13px; }
+.li .ss { font-size: 11.5px; color: var(--ink-3); }
+</style>
+</head>
+<body>
+<!-- The mark, defined once and reused. Solid only. -->
+<svg width="0" height="0" style="position:absolute">
+  <defs>
+    <symbol id="mark" viewBox="0 0 128 128">
+      <path d="M14 90Q24 90 24 80V50Q24 38 36 38H92Q104 38 104 50V80Q104 90 114 90Z" fill="#141829"/>
+      <circle cx="44" cy="62" r="8" fill="#5e8bff"/>
+      <rect x="58" y="58" width="30" height="8" rx="4" fill="#fff"/>
+    </symbol>
+    <symbol id="tile" viewBox="0 0 128 128">
+      <defs>
+        <filter id="b" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="18"/></filter>
+        <clipPath id="c"><rect width="128" height="128" rx="30"/></clipPath>
+      </defs>
+      <g clip-path="url(#c)">
+        <rect width="128" height="128" fill="#fff"/>
+        <g filter="url(#b)" opacity=".55">
+          <circle cx="14" cy="18" r="34" fill="#ffe08a"/>
+          <circle cx="112" cy="14" r="36" fill="#f49be6"/>
+          <circle cx="20" cy="118" r="40" fill="#8ab4ff"/>
+          <circle cx="112" cy="118" r="38" fill="#b9a4ff"/>
+        </g>
+        <use href="#mark"/>
+      </g>
+      <rect x=".75" y=".75" width="126.5" height="126.5" rx="29.5" fill="none" stroke="#141829" stroke-opacity=".07" stroke-width="1.5"/>
+    </symbol>
+  </defs>
+</svg>
+
+<div class="board">
+
+  <section class="p cover">
+    <div class="glow"><i style="width:340px;height:220px;left:-90px;top:-110px;background:var(--butter)"></i><i style="width:320px;height:220px;right:-80px;top:-120px;background:var(--orchid)"></i><i style="width:360px;height:200px;left:20%;bottom:-150px;background:var(--sky)"></i><i style="width:260px;height:180px;right:-60px;bottom:-120px;background:var(--lilac)"></i></div>
+    <div class="lockup"><svg><use href="#mark"/></svg><div class="wm">Tab Land</div></div>
+    <span class="label">Primary lockup</span><span class="num">01</span>
+  </section>
+
+  <section class="p cons">
+    <svg viewBox="0 0 128 128" aria-label="Mark construction">
+      <g stroke="#c9cedd" stroke-width=".4" fill="none">
+        <path d="M0 38H128M0 62H128M0 90H128"/>
+        <path d="M24 0V128M44 0V128M58 0V128M88 0V128M104 0V128"/><circle cx="44" cy="62" r="14"/>
+      </g>
+      <use href="#mark"/>
+      
+    </svg>
+    <dl>
+      <div><dt>Idea</dt><dd>One browser tab: the thing you open, switch and close all day.</dd></div>
+      <div><dt>Grid</dt><dd>80 × 52 body on a 128 grid, 12-unit shoulders, 10-unit flared feet</dd></div>
+      <div><dt>Shape</dt><dd>Ink tab, Tab Blue favicon, white title line</dd></div>
+      <div><dt>Rule</dt><dd>Solid fills only. Never outline, never gradient.</dd></div>
+    </dl>
+    <span class="label">Construction</span><span class="num">02</span>
+  </section>
+
+  <section class="p browser">
+    <div class="glow"><i style="width:280px;height:160px;left:-60px;top:-90px;background:var(--mint)"></i><i style="width:260px;height:160px;right:-40px;top:-100px;background:var(--orchid)"></i></div>
+    <div class="win">
+      <div class="strip">
+        <div class="dots"><b></b><b></b><b></b></div>
+        <span class="gpill" style="background:var(--blue)">Engineering</span>
+        <span class="t on">Pull request #7</span><span class="t">Issues</span>
+        <span class="gpill" style="background:var(--green);margin-left:4px">Hiring</span>
+        <span class="t">Candidates</span>
+      </div>
+      <div class="url"><div class="bar">github.com/acme/api/pull/7</div><svg><use href="#tile"/></svg></div>
+      <div class="page">
+        <div class="pop">
+          <div class="hd"><svg><use href="#tile"/></svg><span class="wm">Tab Land</span></div>
+          <span class="btn-ink">Tidy up</span>
+          <div class="row"><span>2 duplicates</span><span>3 child tabs</span></div>
+        </div>
+      </div>
+    </div>
+    <span class="label">In the browser</span><span class="num">03</span>
+  </section>
+
+  <section class="p essence">
+    <h2>Every tab in its place.</h2>
+    <p>Tab Land orders tabs by how you use them, groups them by the work they're for, and closes the ones you're done with.</p>
+    <span class="label">Promise</span><span class="num">04</span>
+  </section>
+
+  <section class="p color">
+    <h3>Solid: everything in front</h3>
+    <div class="solid">
+      <div class="sw" style="background:var(--ink);color:#fff">Ink<span>#141829</span></div>
+      <div class="sw" style="background:var(--blue);color:#fff">Tab Blue<span>#5E8BFF</span></div>
+      <div class="sw" style="background:var(--green);color:#fff">Tab Green<span>#34C27A</span></div>
+      <div class="sw" style="background:var(--coral);color:#fff">Tab Coral<span>#FF6B7A</span></div>
+      <div class="sw" style="background:var(--mist);color:var(--ink)">Mist<span>#F5F6FA</span></div>
+    </div>
+    <h3>Glow: backgrounds only</h3>
+    <div class="glows">
+      <div class="gw"><div class="orb" style="background:var(--sky)"></div>Sky</div>
+      <div class="gw"><div class="orb" style="background:var(--mint)"></div>Mint</div>
+      <div class="gw"><div class="orb" style="background:var(--blush)"></div>Blush</div>
+      <div class="gw"><div class="orb" style="background:var(--butter)"></div>Butter</div>
+      <div class="gw"><div class="orb" style="background:var(--orchid)"></div>Orchid</div>
+      <div class="gw"><div class="orb" style="background:var(--lilac)"></div>Lilac</div>
+    </div>
+    <span class="label">Color</span><span class="num">05</span>
+  </section>
+
+  <section class="p type">
+    <h3>Display: Unbounded</h3>
+    <div class="spec">Aa Tt</div>
+    <div class="alpha">ABCDEFGHIJKLMNOPQRSTUVWXYZ</div>
+    <div class="body"><b>Interface: Onest</b><span class="o">Close 3 child tabs</span><b></b><span class="muted" style="color:var(--ink-3)">Regular 400, Medium 550, Semibold 650</span></div>
+    <span class="label">Typography</span><span class="num">06</span>
+  </section>
+
+  <section class="p store">
+    <div class="tile">
+      <div class="glow"><i style="width:240px;height:160px;left:-70px;top:-80px;background:var(--butter)"></i><i style="width:240px;height:170px;right:-60px;top:-90px;background:var(--orchid)"></i><i style="width:260px;height:150px;left:-40px;bottom:-110px;background:var(--sky)"></i><i style="width:220px;height:150px;right:-50px;bottom:-100px;background:var(--lilac)"></i></div>
+      <div class="lk"><svg><use href="#tile"/></svg><span class="wm">Tab Land</span></div>
+      <p>Every tab in its place.</p>
+      <div class="icons"><svg style="width:32px;height:32px"><use href="#tile"/></svg><svg style="width:20px;height:20px"><use href="#tile"/></svg><svg style="width:16px;height:16px"><use href="#tile"/></svg></div>
+    </div>
+    <span class="label">Store tile and toolbar icons</span><span class="num">07</span>
+  </section>
+
+  <section class="p atmo">
+    <div class="glow"><i style="width:360px;height:260px;left:-80px;top:-60px;background:var(--butter);opacity:.6"></i><i style="width:340px;height:260px;left:30%;top:-120px;background:var(--orchid);opacity:.5"></i><i style="width:320px;height:240px;right:-90px;top:20px;background:var(--lilac);opacity:.55"></i><i style="width:380px;height:200px;left:10%;bottom:-120px;background:var(--sky);opacity:.5"></i><i style="width:240px;height:180px;right:5%;bottom:-120px;background:var(--mint);opacity:.45"></i></div>
+    <span class="wm">Light, not paint</span>
+    <svg class="big" viewBox="0 0 128 128"><use href="#mark"/></svg>
+    <span class="label">Atmosphere: blurred glow at the edges, solid forms in front</span><span class="num">08</span>
+  </section>
+
+  <section class="p detail">
+    <h3>Components</h3>
+    <div class="chips">
+      <span class="chip" style="background:#e8f8ef;color:#15804a">Safe</span>
+      <span class="chip" style="background:#edf2ff;color:#2f5fd6">Likely</span>
+      <span class="chip" style="background:#ffeef0;color:#c7384a">Maybe</span>
+      <span class="chip" style="background:var(--mist);color:var(--ink-2)">Jev 92%</span>
+    </div>
+    <div class="groups">
+      <span class="grp" style="background:var(--blue)">Engineering</span>
+      <span class="grp" style="background:var(--green)">Hiring</span>
+      <span class="grp" style="background:var(--coral)">Growth</span>
+    </div>
+    <div class="li"><span class="cb"></span><div><div class="tt">github.com/acme/api/pull/7</div><div class="ss">Opened from Pull requests, idle 2h</div></div><span class="chip" style="background:#e8f8ef;color:#15804a">Safe</span></div>
+    <span class="label">System detail</span><span class="num">09</span>
+  </section>
+
+</div>
+</body>
+</html>

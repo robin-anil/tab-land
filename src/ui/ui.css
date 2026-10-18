@@ -1,0 +1,90 @@
+@font-face { font-family: "Unbounded"; src: url("fonts/unbounded-latin-600-normal.woff2") format("woff2"); font-weight: 600; font-display: swap; }
+@font-face { font-family: "Onest"; src: url("fonts/onest-latin-wght-normal.woff2") format("woff2"); font-weight: 100 900; font-display: swap; }
+
+/*
+  Tab Land brand system (see docs/brand/brand-kit.html)
+  - Solid in front: ink, paper, and the three tab colors. No gradients on any element.
+  - Light behind: blurred glow (butter, orchid, sky, lilac, mint) only in backgrounds, at the edges.
+*/
+:root {
+  --ink: #141829;
+  --ink-2: #4a5069;
+  --ink-3: #80869e;
+  --paper: #ffffff;
+  --mist: #f5f6fa;
+  --line: #e6e9f2;
+  --line-strong: #d7dbe7;
+
+  --blue: #5e8bff;
+  --green: #34c27a;
+  --coral: #ff6b7a;
+  --blue-ink: #2f5fd6;
+  --green-ink: #15804a;
+  --coral-ink: #c7384a;
+  --blue-tint: #edf2ff;
+  --green-tint: #e8f8ef;
+  --coral-tint: #ffeef0;
+
+  --sky: #8ab4ff;
+  --mint: #86efac;
+  --butter: #ffe08a;
+  --orchid: #f49be6;
+  --lilac: #b9a4ff;
+
+  --display: "Unbounded", ui-sans-serif, system-ui, sans-serif;
+  --text: "Onest", ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  color-scheme: light;
+}
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html { background: var(--paper); }
+body { margin: 0; color: var(--ink); font: 13px/1.5 var(--text); -webkit-font-smoothing: antialiased; position: relative; isolation: isolate; }
+button, input, select, textarea { font: inherit; color: inherit; }
+button { cursor: pointer; }
+input[type=checkbox], input[type=range] { accent-color: var(--blue); }
+:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+::selection { background: var(--blue-tint); }
+
+/* Background light. Four soft glows in the corners of the top band; never behind body text. */
+.glow-field { position: absolute; inset: 0 0 auto 0; height: var(--glow-h, 200px); overflow: hidden; pointer-events: none; z-index: -1; }
+.glow-field i { position: absolute; border-radius: 50%; filter: blur(var(--glow-blur, 40px)); opacity: .5; }
+.glow-field i:nth-child(1) { width: 46%; height: 70%; left: -14%; top: -34%; background: var(--butter); }
+.glow-field i:nth-child(2) { width: 44%; height: 66%; right: -12%; top: -38%; background: var(--orchid); }
+.glow-field i:nth-child(3) { width: 40%; height: 54%; left: 30%; top: -40%; background: var(--sky); opacity: .35; }
+.glow-field i:nth-child(4) { width: 38%; height: 60%; right: 18%; top: -20%; background: var(--lilac); opacity: .3; }
+
+.wordmark { font-family: var(--display); font-weight: 600; letter-spacing: -0.015em; }
+
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  height: 32px; padding: 0 12px; border-radius: 8px;
+  border: 1px solid var(--line-strong); background: var(--paper); color: var(--ink);
+  font-weight: 550; white-space: nowrap; transition: background .12s, border-color .12s, box-shadow .12s;
+}
+.btn:hover { background: var(--mist); border-color: #c6cbda; }
+.btn:active { background: #eef0f6; }
+.btn:disabled { opacity: .45; cursor: default; }
+.btn.ghost { border-color: transparent; background: transparent; color: var(--ink-2); }
+.btn.ghost:hover { background: var(--mist); color: var(--ink); }
+.btn.danger { color: var(--coral-ink); }
+
+/* Primary: solid ink. While it works, its light moves through the three tab colors. */
+.btn.primary { height: 40px; border: 0; border-radius: 10px; background: var(--ink); color: #fff; font-weight: 600; box-shadow: 0 1px 2px rgba(20, 24, 41, .2), 0 8px 20px -10px rgba(94, 139, 255, .65); }
+.btn.primary:hover { background: #262b40; }
+.btn.primary:disabled { opacity: 1; background: #c4c9d6; box-shadow: none; }
+.btn.primary.working { animation: breathe 1.8s ease-in-out infinite; }
+@keyframes breathe {
+  0%, 100% { box-shadow: 0 1px 2px rgba(20, 24, 41, .2), 0 8px 24px -8px rgba(94, 139, 255, .8); }
+  33% { box-shadow: 0 1px 2px rgba(20, 24, 41, .2), 0 8px 24px -8px rgba(52, 194, 122, .8); }
+  66% { box-shadow: 0 1px 2px rgba(20, 24, 41, .2), 0 8px 24px -8px rgba(255, 107, 122, .8); }
+}
+@media (prefers-reduced-motion: reduce) { .btn.primary.working { animation: none; } }
+
+.chip { display: inline-flex; align-items: center; height: 20px; padding: 0 8px; border-radius: 6px; background: var(--mist); color: var(--ink-2); font-size: 11px; font-weight: 600; white-space: nowrap; }
+.chip.sure { background: var(--green-tint); color: var(--green-ink); }
+.chip.likely { background: var(--blue-tint); color: var(--blue-ink); }
+.chip.maybe { background: var(--coral-tint); color: var(--coral-ink); }
+
+.muted { color: var(--ink-3); }
+.mark { display: block; }

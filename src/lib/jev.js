@@ -1,0 +1,323 @@
+// TypeSafe AI "Jev" client (System One API).
+// Jev doesn't write text: it answers typed questions about a `state`:
+//   choice → { choice, confidence, probabilities }   noul → { noul: 0..1 }
+// We use `choice` to assign tabs to use cases and `noul` to judge whether a child tab is safe to close.
+import { displayPath, siteKey } from './url.js';
+import { formatIdle } from './dedupe.js';
+import { describeUseCase, USE_CASE_VOCAB } from './learn.js';
+
+export class JevError extends Error {
+  constructor(message, status, requestId) {
+    super(message);
+    this.status = status;
+    this.requestId = requestId;
+  }
+}
+
+function base(settings) {
+  return String(settings.jevBaseUrl || 'https://api.typesafe.ai').replace(/\/+$/, '');
+}
+
+async function jevFetch(settings, path, init = {}, { retries = 2, fetchImpl = undefined, retryDelay = 500, timeoutMs = undefined } = {}) {
+  if (!settings.jevApiKey) throw new JevError('No Jev API key set', 401);
+  const doFetch = fetchImpl || globalThis.fetch;
+  const limit = timeoutMs ?? settings.jevTimeoutMs ?? 15000;
+  let attempt = 0;
+  for (;;) {
+    let res;
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), limit);
+    try {
+      res = await doFetch(base(settings) + path, {
+        ...init,
+        signal: ctrl.signal,
+        headers: {
+          Authorization: `Bearer ${settings.jevApiKey}`,
+          'Content-Type': 'application/json',
+          ...(init.headers || {}),
+        },
+      });
+    } catch (e) {
+      const timedOut = ctrl.signal.aborted;
+      if (attempt++ < retries) { await sleep(retryDelay * 2 ** attempt); continue; }
+      throw new JevError(timedOut ? `Jev timed out after ${Math.round(limit / 1000)}s` : `Network error: ${e.message}`, 0);
+    } finally {
+      clearTimeout(timer);
+    }
+    const requestId = res.headers?.get?.('x-typesafe-request-id') || '';
+    if (res.ok) {
+      try { return await res.json(); }
+      catch { throw new JevError('Jev returned a response that is not JSON', res.status, requestId); }
+    }
+    const retryable = res.status === 429 || res.status === 529 || res.status >= 500;
+    if (retryable && attempt++ < retries) { await sleep(retryDelay * 2 ** attempt); continue; }
+    let detail = '';
+    try { const j = await res.json(); detail = j?.error?.message || j?.message || JSON.stringify(j).slice(0, 200); } catch { /* ignore */ }
+    const hint = { 401: 'invalid or missing API key', 403: 'key not allowed', 422: 'request rejected', 429: 'rate limited', 529: 'Jev is overloaded' }[res.status] || '';
+    throw new JevError(`Jev ${res.status}${hint ? ` (${hint})` : ''}${detail ? `: ${detail}` : ''}`, res.status, requestId);
+  }
+}
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+export function jevModels(settings, opts) {
+  return jevFetch(settings, '/v1/models', { method: 'GET' }, opts);
+}
+
+export function jevEvaluate(settings, body, opts) {
+  return jevFetch(settings, '/v1/systemone', { method: 'POST', body: JSON.stringify(body) }, opts);
+}
+
+/** Run requests with bounded concurrency; failures are collected, not thrown. */
+export async function runAll(settings, requests, { concurrency = 4, fetchImpl = undefined, retryDelay = undefined } = {}) {
+  const results = new Array(requests.length);
+  const errors = [];
+  let i = 0;
+  const worker = async () => {
+    while (i < requests.length) {
+      const idx = i++;
+      try { results[idx] = await jevEvaluate(settings, requests[idx].body, { fetchImpl, retryDelay }); }
+      catch (e) {
+        errors.push(e);
+        results[idx] = null;
+        if (e.status === 401 || e.status === 403) { i = requests.length; } // bad key: don't hammer the API
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(concurrency, requests.length) }, worker));
+  return { results, errors };
+}
+
+// ---------- describing tabs (privacy-aware) ----------
+
+export function describeTab(tab, settings) {
+  const title = settings.sendTitles ? clip(tab.title || '(untitled)', 90) : '(title hidden)';
+  const where = settings.sendPaths ? `${siteKey(tab.url).split('/')[0]}${displayPath(tab.url, 60)}` : siteKey(tab.url).split('/')[0];
+  return `"${title}" — ${where}`;
+}
+
+function clip(s, n) { s = String(s).replace(/\s+/g, ' ').trim(); return s.length > n ? s.slice(0, n - 1) + '…' : s; }
+
+// ---------- grouping: one `choice` question per tab ----------
+
+/**
+ * @param {Array} tabs  tabs allowed to be sent (already privacy-filtered)
+ * @param {{useCases, existingGroups:string[], goals?:Array<{name:string, samples?:string[]}>, settings, related?:Map<number,{openedFrom?:number, usedWith?:number[], group?:string}>, chunk?:number}} o
+ * @returns {Array<{body:any, idMap:any, options:any}>}
+ */
+export function buildGroupingRequests(tabs, { useCases, existingGroups = [], goals = [], settings, related = new Map(), chunk = 20 }) {
+  const shown = tabs.slice(0, 150);
+  const num = new Map(shown.map((t, i) => [t.id, i + 1]));
+  const lines = shown.map((t) => {
+    const r = related.get(t.id) || {};
+    const bits = [`[${num.get(t.id)}] ${describeTab(t, settings)}`];
+    if (r.openedFrom != null && num.has(r.openedFrom)) bits.push(`opened from [${num.get(r.openedFrom)}]`);
+    const w = (r.usedWith || []).filter((id) => num.has(id)).slice(0, 4).map((id) => `[${num.get(id)}]`);
+    if (w.length) bits.push(`often used with ${w.join(', ')}`);
+    if (r.group) bits.push(`currently in group "${r.group}"`);
+    return bits.join('; ');
+  });
+  const state = `Open browser tabs. Each line: [n] "title" — site/path; plus how tabs relate (opened from, often switched between, current group).\n\n${lines.join('\n')}`;
+
+  // Option keys are slugs; names map back.
+  const options = {};
+  const criteria = {};
+  const seen = new Set();
+  // Goals found this run come first: a stray tab joining an active goal beats a generic category.
+  goals.forEach((g, i) => {
+    if (!g?.name || seen.has(g.name.toLowerCase())) return;
+    seen.add(g.name.toLowerCase());
+    options[`g${i}`] = g.name;
+    criteria[`g${i}`] = `${g.name}: a goal in progress, with tabs like ${(g.samples || []).slice(0, 3).map((t) => `"${clip(t, 50)}"`).join(', ')}`;
+  });
+  useCases.forEach((u, i) => {
+    if (!u?.name || seen.has(u.name.toLowerCase())) return;
+    seen.add(u.name.toLowerCase());
+    options[`uc${i}`] = u.name;
+    criteria[`uc${i}`] = `${u.name}: ${describeUseCase(u)}`;
+  });
+  existingGroups.forEach((g, i) => {
+    if (!g || seen.has(g.toLowerCase())) return;
+    seen.add(g.toLowerCase());
+    options[`ex${i}`] = g;
+    criteria[`ex${i}`] = `${g}: an existing tab group the user already made`;
+  });
+  options.none = null;
+  criteria.none = 'None of these: a one-off tab that does not belong with others';
+
+  const requests = [];
+  for (let s = 0; s < shown.length; s += chunk) {
+    const questions = {};
+    const idMap = {};
+    for (const t of shown.slice(s, s + chunk)) {
+      const q = `tab_${num.get(t.id)}`;
+      idMap[q] = t.id;
+      questions[q] = {
+        type: 'choice',
+        instructions: `Which use case or project is tab [${num.get(t.id)}] part of? Judge by the work it serves, using the tabs it was opened from and is used with, not just its website.`,
+        criteria,
+      };
+    }
+    requests.push({ body: { model: settings.jevModel || 'jev-latest', state, questions }, idMap, options });
+  }
+  return requests;
+}
+
+/** → Map<tabId, {name|null, confidence, probabilities}> */
+export function parseGroupingResponses(requests, results) {
+  const out = new Map();
+  requests.forEach((req, i) => {
+    const answers = results[i]?.answers;
+    if (!answers) return;
+    for (const [q, tabId] of Object.entries(req.idMap)) {
+      const a = answers[q];
+      if (!a || !a.choice || !(a.choice in req.options)) continue;
+      out.set(tabId, { name: req.options[a.choice], confidence: num(a.confidence, a.probabilities?.[a.choice]) });
+    }
+  });
+  return out;
+}
+
+// ---------- goals: verify a cluster, prune outliers, name it when titles share nothing ----------
+
+/**
+ * One request per candidate goal: `goal` (do these tabs serve one goal?), `member_i` per tab for
+ * clusters of 3+, and a `name` choice from the vocabulary when the tabs share no usable words.
+ * @param {Array<{tabs:any[], needName?:boolean}>} goals
+ */
+export function buildGoalRequests(goals, { settings, exclude = [] }) {
+  const taken = new Set(exclude.map((n) => n.toLowerCase()));
+  const nameOptions = {};
+  const nameCriteria = {};
+  USE_CASE_VOCAB.forEach(([name, desc], i) => {
+    if (taken.has(name.toLowerCase())) return;
+    nameOptions[`v${i}`] = name;
+    nameCriteria[`v${i}`] = `${name}: ${desc}`;
+  });
+  return goals.map((g) => {
+    const lines = g.tabs.map((t, i) => `[${i + 1}] ${describeTab(t, settings)}`);
+    const questions = {
+      goal: {
+        type: 'noul',
+        instructions: 'Do these browser tabs all serve one goal: the same task, project, problem, deal, person or deliverable?',
+        criteria: { true: 'one piece of work spread across tools (e.g. an issue, its pull request, the runbook and the chat thread about it)', false: 'only the same website or tool, or unrelated tasks that happen to share words' },
+      },
+    };
+    const idMap = {};
+    if (g.tabs.length >= 3) {
+      g.tabs.forEach((t, i) => {
+        questions[`member_${i + 1}`] = { type: 'noul', instructions: `Is tab [${i + 1}] part of the goal the other tabs share?` };
+        idMap[`member_${i + 1}`] = t.id;
+      });
+    }
+    if (g.needName && Object.keys(nameCriteria).length) {
+      questions.name = { type: 'choice', instructions: 'Which kind of work is this goal?', criteria: nameCriteria };
+    }
+    return { body: { model: settings.jevModel || 'jev-latest', state: `Browser tabs that may serve one goal.\n\n${lines.join('\n')}`, questions }, idMap, nameOptions };
+  });
+}
+
+/** → [{p, members: Map<tabId, p>, name: string|null}] aligned with requests (null when the call failed). */
+export function parseGoalResponses(requests, results) {
+  return requests.map((req, i) => {
+    const a = results[i]?.answers;
+    if (!a) return null;
+    const members = new Map();
+    for (const [q, id] of Object.entries(req.idMap)) { const p = num(a[q]?.noul, a[q]?.probability); if (p != null) members.set(id, p); }
+    const c = a.name?.choice;
+    return { p: num(a.goal?.noul, a.goal?.probability), members, name: c && c in req.nameOptions ? req.nameOptions[c] : null };
+  });
+}
+
+// ---------- learning: name a discovered cluster with one `choice` question ----------
+
+/**
+ * @param {Array<{sites:string[], titles:string[]}>} clusters
+ * @param {{settings, exclude:string[]}} o  exclude: names already in use
+ */
+export function buildNamingRequests(clusters, { settings, exclude = [] }) {
+  const taken = new Set(exclude.map((n) => n.toLowerCase()));
+  const options = {};
+  const criteria = {};
+  USE_CASE_VOCAB.forEach(([name, desc], i) => {
+    if (taken.has(name.toLowerCase())) return;
+    options[`v${i}`] = name;
+    criteria[`v${i}`] = `${name}: ${desc}`;
+  });
+  return clusters.map((c) => {
+    const titles = settings.sendTitles ? (c.titles || []).slice(0, 8).map((t) => `"${clip(t, 80)}"`) : [];
+    const state = `A set of websites this person uses together, often switching between them.\nSites: ${c.sites.join(', ')}${titles.length ? `\nRecent tab titles: ${titles.join('; ')}` : ''}`;
+    return {
+      body: { model: settings.jevModel || 'jev-latest', state, questions: { name: { type: 'choice', instructions: 'Which use case best describes the work these sites are used for together?', criteria } } },
+      options,
+    };
+  });
+}
+
+export function parseNamingResponses(requests, results) {
+  return requests.map((req, i) => {
+    const a = results[i]?.answers?.name;
+    if (!a?.choice || !(a.choice in req.options)) return null;
+    return { name: req.options[a.choice], confidence: num(a.confidence, a.probabilities?.[a.choice]) ?? 0 };
+  });
+}
+
+// ---------- closing: one `noul` question per (parent, child) candidate ----------
+
+export function buildCloseReviewRequests(candidates, { settings, chunk = 15 }) {
+  const requests = [];
+  for (let s = 0; s < candidates.length; s += chunk) {
+    const slice = candidates.slice(s, s + chunk);
+    const blocks = slice.map((c, i) => {
+      const p = c.parent;
+      const via = { opener: 'opened by clicking in the parent', history: 'previously opened from the parent', link: 'parent links to it', path: 'URL sits under the parent', list: 'parent is a list/search page on the same site', adjacent: 'opened next to the parent on the same site', transient: 'sign-in/redirect page' }[c.signals?.via] || 'related';
+      return [
+        `Pair ${i + 1}:`,
+        p ? `  Parent: ${describeTab(p, settings)} (viewed ${p.activations || 0}×)` : '  Parent: (none open)',
+        `  Child: ${describeTab(c.tab, settings)} (${via}; viewed ${c.tab.activations || 0}×; idle ${formatIdle(c.idleMin)})`,
+      ].join('\n');
+    });
+    const questions = {};
+    const idMap = {};
+    slice.forEach((c, i) => {
+      const q = `pair_${i + 1}`;
+      idMap[q] = c.tab.id;
+      questions[q] = {
+        type: 'noul',
+        instructions: `Pair ${i + 1}: Is the child tab a throwaway page the user opened from the parent and is now done with, so closing it loses nothing while the parent stays open?`,
+        criteria: {
+          true: 'a result, item, link, preview or detail page spawned from the parent hub; idle and lightly used; easy to reopen from the parent',
+          false: 'its own ongoing work: a document being edited, a long read in progress, a form, a call, or something the user keeps returning to',
+        },
+      };
+    });
+    requests.push({ body: { model: settings.jevModel || 'jev-latest', state: `Browser tabs that were opened from other tabs.\n\n${blocks.join('\n\n')}`, questions }, idMap });
+  }
+  return requests;
+}
+
+/** → Map<tabId, probability 0..1> */
+export function parseNoulResponses(requests, results) {
+  const out = new Map();
+  requests.forEach((req, i) => {
+    const answers = results[i]?.answers;
+    if (!answers) return;
+    for (const [q, tabId] of Object.entries(req.idMap)) {
+      const a = answers[q];
+      const p = num(a?.noul, a?.probability, a?.value);
+      if (p != null) out.set(tabId, p);
+    }
+  });
+  return out;
+}
+
+/** Heuristic confidence (lineage strength) blended with Jev's judgement. */
+export function blendConfidence(heuristic, jevP) {
+  if (jevP == null) return heuristic;
+  return Math.max(0, Math.min(1, 0.4 * heuristic + 0.6 * jevP));
+}
+
+function num(...xs) {
+  for (const x of xs) if (typeof x === 'number' && isFinite(x)) return x;
+  return null;
+}

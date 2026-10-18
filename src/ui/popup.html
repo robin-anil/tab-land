@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Tab Land</title>
+  <link rel="stylesheet" href="ui.css">
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="glow-field" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+  <header>
+    <img class="mark" src="mark.svg" alt="">
+    <div class="hd-text">
+      <div class="name wordmark">Tab Land</div>
+      <div class="stats muted" id="stats">Reading tabs…</div>
+    </div>
+    <button class="btn ghost icon" id="settings" title="Settings" aria-label="Settings">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+    </button>
+  </header>
+
+  <div class="search">
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+    <input id="q" type="search" placeholder="Search tabs, closed tabs and history" autocomplete="off" spellcheck="false" aria-label="Search tabs" aria-controls="resultList">
+    <kbd id="qHint">⌘⇧K</kbd>
+  </div>
+
+  <section id="results" hidden>
+    <ul id="resultList" role="listbox" aria-label="Search results"></ul>
+    <div class="empty small" id="noResults" hidden><div class="muted">No tabs, closed tabs or history match.</div></div>
+  </section>
+
+  <div id="home">
+  <div class="banner" id="keyBanner" hidden>
+    Add your Jev API key so Tab Land can check and name goals. Until then it groups from titles, links and how you switch between tabs.
+    <button class="link" id="openSettings">Open settings</button>
+  </div>
+  <div class="banner warn" id="jevError" hidden></div>
+
+  <section class="actions">
+    <button class="btn primary big" id="tidy">Tidy up</button>
+    <div class="row">
+      <button class="btn" id="closeSel">Close selected</button>
+      <button class="btn" id="group">Group</button>
+      <button class="btn" id="reorder">Reorder</button>
+    </div>
+    <div class="regroup">
+      <button class="link quiet" id="regroupBtn">Regroup everything</button>
+      <span id="regroupConfirm" hidden>
+        <span class="muted" id="regroupAsk">Ungroup Tab Land's groups and rebuild them?</span>
+        <button class="link" id="regroupYes">Regroup</button>
+        <button class="link quiet" id="regroupNo">Cancel</button>
+      </span>
+    </div>
+  </section>
+
+  <nav class="seg" role="tablist" aria-label="Views">
+    <button role="tab" data-view="cleanup" aria-selected="true">Cleanup <span class="count" id="nCleanup"></span></button>
+    <button role="tab" data-view="contexts" aria-selected="false">Contexts <span class="count" id="nContexts"></span></button>
+  </nav>
+
+  <main id="lists">
+    <div id="viewCleanup" role="tabpanel">
+    <section class="list" id="dupSection" hidden>
+      <h2><label><input type="checkbox" id="dupAll" checked> Duplicates <span class="count" id="dupCount"></span></label></h2>
+      <ul id="dupList"></ul>
+    </section>
+    <section class="list" id="kidSection" hidden>
+      <h2><label><input type="checkbox" id="kidAll"> Child tabs you're done with <span class="count" id="kidCount"></span></label></h2>
+      <ul id="kidList"></ul>
+    </section>
+    <div class="empty" id="empty" hidden>
+      <img class="mark" src="mark.svg" alt="">
+      <div class="empty-title">Nothing to close</div>
+      <div class="muted">No duplicates or leftover child tabs right now.</div>
+    </div>
+    </div>
+
+    <div id="viewContexts" role="tabpanel" hidden>
+      <section class="list">
+        <h2>Open groups</h2>
+        <ul id="openCtx"></ul>
+        <div class="hint-row muted" id="openCtxEmpty" hidden>No tab groups open. Click Group to make some.</div>
+      </section>
+      <section class="list">
+        <h2>Parked</h2>
+        <ul id="parkedCtx"></ul>
+        <div class="hint-row muted" id="parkedCtxEmpty" hidden>Park a group to close its tabs and bring them all back later.</div>
+      </section>
+    </div>
+  </main>
+  </div>
+
+  <footer>
+    <span id="status" class="muted" role="status"></span>
+    <span class="foot-acts">
+      <button class="btn ghost" id="undoRegroup" hidden>Undo regroup</button>
+      <button class="btn ghost" id="undo" hidden>Undo close</button>
+    </span>
+  </footer>
+  <script type="module" src="popup.js"></script>
+</body>
+</html>

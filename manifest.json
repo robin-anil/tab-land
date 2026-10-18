@@ -1,0 +1,73 @@
+{
+  "manifest_version": 3,
+  "name": "Tab Land",
+  "short_name": "Tab Land",
+  "version": "0.1.0",
+  "description": "Orders tabs by how you use them, groups them by use case with TypeSafe AI's Jev, and closes duplicates and leftover child tabs.",
+  "minimum_chrome_version": "121",
+  "background": {
+    "service_worker": "src/background.js",
+    "type": "module"
+  },
+  "action": {
+    "default_title": "Tab Land",
+    "default_popup": "src/ui/popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "options_ui": {
+    "page": "src/ui/options.html",
+    "open_in_tab": true
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "permissions": [
+    "tabs",
+    "tabGroups",
+    "storage",
+    "webNavigation",
+    "alarms",
+    "sessions",
+    "history"
+  ],
+  "host_permissions": [
+    "https://api.typesafe.ai/*"
+  ],
+  "optional_permissions": [
+    "scripting"
+  ],
+  "optional_host_permissions": [
+    "<all_urls>"
+  ],
+  "commands": {
+    "_execute_action": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+K",
+        "mac": "Command+Shift+K"
+      },
+      "description": "Open Tab Land and search tabs"
+    },
+    "tidy-now": {
+      "suggested_key": {
+        "default": "Alt+Shift+T",
+        "mac": "Alt+Shift+T"
+      },
+      "description": "Tidy all tabs now (dedupe, close safe children, group, reorder)"
+    },
+    "regroup-all": {
+      "suggested_key": {
+        "default": "Alt+Shift+G",
+        "mac": "Alt+Shift+G"
+      },
+      "description": "Regroup everything from scratch (Tab Land's groups only; undo from the popup)"
+    }
+  }
+}

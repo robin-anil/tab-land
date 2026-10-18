@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Tab Land Settings</title>
+  <link rel="stylesheet" href="ui.css">
+  <link rel="stylesheet" href="options.css">
+</head>
+<body>
+  <div class="glow-field" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+  <div class="wrap">
+    <header class="top">
+      <img class="mark" src="mark.svg" alt="">
+      <div>
+        <h1 class="wordmark">Tab Land settings</h1>
+        <p class="muted">Usage ordering, use-case groups and cleanup. Everything is stored in this browser only.</p>
+      </div>
+    </header>
+
+    <section class="card" id="jev">
+      <div class="card-hd">
+        <h2>Jev by TypeSafe AI</h2>
+        <span class="chip" id="keyState">No key</span>
+      </div>
+      <p class="muted">Jev answers typed questions instead of writing text. Tab Land asks it which use case each tab belongs to, and how likely each child tab is safe to close. Get a key at <a href="https://console.typesafe.ai/settings/keys" target="_blank" rel="noreferrer">console.typesafe.ai</a>.</p>
+
+      <label class="field">
+        <span>API key</span>
+        <div class="inline">
+          <input type="password" id="jevApiKey" autocomplete="off" spellcheck="false" placeholder="Paste your Jev API key">
+          <button class="btn" id="toggleKey" type="button">Show</button>
+          <button class="btn" id="testKey" type="button">Test</button>
+        </div>
+        <small class="hint" id="testResult"></small>
+      </label>
+
+      <div class="grid2">
+        <label class="field">
+          <span>Model</span>
+          <select id="jevModel">
+            <option value="jev-latest">jev-latest</option>
+            <option value="jev-preview">jev-preview</option>
+            <option value="__custom">Custom…</option>
+          </select>
+          <input type="text" id="jevModelCustom" placeholder="e.g. jev-1.13.0" hidden>
+        </label>
+        <label class="field">
+          <span>API base URL</span>
+          <input type="url" id="jevBaseUrl" placeholder="https://api.typesafe.ai">
+          <small class="hint">Change only for a gateway (Vercel AI Gateway, LiteLLM, ngrok).</small>
+        </label>
+      </div>
+
+      <label class="toggle"><input type="checkbox" id="useJevForGrouping"> Use Jev to group tabs by use case</label>
+      <label class="toggle"><input type="checkbox" id="useJevForClosing"> Use Jev to review child tabs before closing</label>
+      <label class="field narrow">
+        <span>Minimum Jev confidence to accept a group pick</span>
+        <div class="inline"><input type="range" id="minChoiceConfidence" min="0.2" max="0.9" step="0.05"><output id="minChoiceConfidenceOut"></output></div>
+      </label>
+    </section>
+
+    <section class="card">
+      <h2>Grouping</h2>
+      <p class="muted">How Tab Land decides which tabs belong together.</p>
+      <label class="choice"><input type="radio" name="groupingMode" value="goals"> <span><b>By goal</b> <span class="muted">(recommended)</span><br><span class="muted">Tabs that serve the same job, across any sites: the issue, its pull request, the runbook and the chat thread. Uses which tab opened which, what you switch between, and what titles share.</span></span></label>
+      <label class="choice"><input type="radio" name="groupingMode" value="useCases"> <span><b>By use case</b><br><span class="muted">The kind of work, from the list below (Engineering, Hiring, Growth…).</span></span></label>
+      <label class="toggle"><input type="checkbox" id="readPageText"> Read page descriptions and headings to understand tabs better <span class="muted">(runs in your browser, never sent; asks for page access)</span></label>
+      <div class="regroup-box">
+        <div>
+          <div class="regroup-title">Regroup everything now</div>
+          <div class="muted" id="regroupHint">Ungroups Tab Land's groups and rebuilds them with the mode above. Use this after switching modes. You can undo it.</div>
+          <label class="toggle"><input type="checkbox" id="regroupManual"> Also regroup groups I made myself</label>
+        </div>
+        <div class="inline">
+          <button class="btn ghost" id="undoRegroupBtn" type="button" hidden>Undo last regroup</button>
+          <button class="btn" id="regroupNow" type="button">Regroup now</button>
+        </div>
+      </div>
+      <small class="hint" id="regroupResult"></small>
+    </section>
+
+    <section class="card">
+      <div class="card-hd">
+        <h2>Use cases</h2>
+        <div class="inline">
+          <button class="btn ghost" id="resetUseCases" type="button">Reset to defaults</button>
+          <button class="btn" id="learnBtn" type="button">Learn from my tabs</button>
+        </div>
+      </div>
+      <p class="muted">In goal mode, tabs that don't belong to any goal fall back to these. In use-case mode, these are the groups. Jev chooses from them, along with any groups you already have open. The description tells Jev what belongs in each one, and the sites Tab Land learns from your tabs sharpen it.</p>
+
+      <div class="learn" id="learnPanel" hidden>
+        <div class="learn-hd">
+          <div>
+            <div class="learn-title">Suggested from your tabs</div>
+            <div class="muted" id="learnMeta"></div>
+          </div>
+          <div class="inline">
+            <button class="btn ghost" id="learnClose" type="button">Dismiss</button>
+            <button class="btn primary" id="learnApply" type="button">Apply selected</button>
+          </div>
+        </div>
+        <ul id="learnList"></ul>
+      </div>
+
+      <div id="useCases"></div>
+      <button class="btn" id="addUseCase" type="button">Add use case</button>
+      <label class="toggle" style="margin-top:14px"><input type="checkbox" id="autoTuneUseCases"> Keep each use case's sites up to date automatically <span class="muted">(daily; never adds or removes use cases)</span></label>
+    </section>
+
+    <section class="card">
+      <h2>Privacy</h2>
+      <p class="muted">Only what's checked below is sent to Jev. Query strings and page contents are never sent.</p>
+      <label class="toggle"><input type="checkbox" id="sendTitles"> Send tab titles</label>
+      <label class="toggle"><input type="checkbox" id="sendPaths"> Send URL paths (otherwise only the site name)</label>
+      <div class="grid2">
+        <label class="field">
+          <span>Never send to Jev</span>
+          <textarea id="aiExcludedDomains" rows="4" placeholder="ehr.example.com&#10;mail.google.com"></textarea>
+          <small class="hint">One domain per line; subdomains included. Use this for EHR, billing or any page that can show PHI.</small>
+        </label>
+        <label class="field">
+          <span>Never close or move</span>
+          <textarea id="protectedDomains" rows="4" placeholder="meet.google.com"></textarea>
+          <small class="hint">These tabs are left alone by every cleanup step.</small>
+        </label>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Cleanup</h2>
+      <div class="grid2">
+        <label class="field">
+          <span>A child tab counts as idle after</span>
+          <div class="inline"><input type="number" id="staleMinutes" min="1" max="1440"> <span class="muted">minutes</span></div>
+        </label>
+        <label class="field">
+          <span>Leftover sign-in pages close after</span>
+          <div class="inline"><input type="number" id="transientMinutes" min="1" max="1440"> <span class="muted">minutes</span></div>
+        </label>
+        <label class="field">
+          <span>Pre-select / auto-close child tabs at confidence ≥</span>
+          <div class="inline"><input type="range" id="autoCloseConfidence" min="0.5" max="0.99" step="0.01"><output id="autoCloseConfidenceOut"></output></div>
+        </label>
+        <label class="field">
+          <span>Usage half-life</span>
+          <div class="inline"><input type="number" id="halfLifeDays" min="0.25" max="60" step="0.25"> <span class="muted">days</span></div>
+          <small class="hint">How fast old usage fades when ordering tabs.</small>
+        </label>
+      </div>
+      <label class="toggle"><input type="checkbox" id="crossWindowDedupe"> Find duplicates across windows</label>
+      <label class="toggle"><input type="checkbox" id="closeVariants"> Treat versions of the same page as one page <span class="muted">(the same address with different <code>?…</code> settings or a <code>#…</code> ending; the one you use is kept)</span></label>
+      <label class="toggle"><input type="checkbox" id="autoCloseDuplicates"> Close extra copies and versions on their own after <input type="number" id="dupIdleMinutes" min="1" max="1440" class="tiny"> minutes unused <span class="muted">(Undo close brings them back)</span></label>
+      <label class="toggle"><input type="checkbox" id="respectManualGroups"> Leave groups I made myself alone</label>
+      <label class="toggle"><input type="checkbox" id="reorderGroupsAsBlocks"> Move groups as blocks when reordering</label>
+      <label class="toggle"><input type="checkbox" id="linkInference"> Check page links to work out which tab a tab came from <span class="muted">(asks for page access; runs locally, nothing is sent)</span></label>
+    </section>
+
+    <section class="card">
+      <h2>Automatic tidy</h2>
+      <label class="toggle"><input type="checkbox" id="autoEnabled"> Run automatically every <input type="number" id="autoIntervalMin" min="5" max="1440" class="tiny"> minutes</label>
+      <div class="sub-toggles">
+        <label class="toggle"><input type="checkbox" id="autoDedupe"> Close exact duplicates</label>
+        <label class="toggle"><input type="checkbox" id="autoCloseChildren"> Close child tabs above the confidence threshold</label>
+        <label class="toggle"><input type="checkbox" id="autoGroup"> Group by use case</label>
+        <label class="toggle"><input type="checkbox" id="autoReorder"> Reorder by usage</label>
+      </div>
+      <p class="muted">Shortcut: <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>T</kbd> runs every step once. Change it at chrome://extensions/shortcuts.</p>
+    </section>
+
+    <section class="card">
+      <h2>Learned data</h2>
+      <p class="muted">Tab Land keeps usage counts, which sites you use together, and where tabs were opened from, so it can order and group better over time.</p>
+      <button class="btn danger" id="resetLearned" type="button">Forget everything learned</button>
+    </section>
+  </div>
+
+  <div class="savebar" id="savebar">
+    <span id="saveState" class="muted">All changes saved</span>
+    <button class="btn primary" id="save" type="button" disabled>Save</button>
+  </div>
+  <script type="module" src="options.js"></script>
+</body>
+</html>
