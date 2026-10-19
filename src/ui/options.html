@@ -154,6 +154,10 @@
       <label class="toggle"><input type="checkbox" id="autoCloseDuplicates"> Close extra copies and versions on their own after <input type="number" id="dupIdleMinutes" min="1" max="1440" class="tiny"> minutes unused <span class="muted">(Undo close brings them back)</span></label>
       <label class="toggle"><input type="checkbox" id="respectManualGroups"> Leave groups I made myself alone</label>
       <label class="toggle"><input type="checkbox" id="reorderGroupsAsBlocks"> Move groups as blocks when reordering</label>
+      <div class="sub-label">Order groups</div>
+      <label class="choice"><input type="radio" name="groupOrder" value="recent"> <span><b>Recently used last</b> <span class="muted">(recommended)</span><br><span class="muted">The group you used most recently sits at the end, and so does the tab you used last inside each group. Groups you haven't touched in a while drift to the start.</span></span></label>
+      <label class="choice"><input type="radio" name="groupOrder" value="usage"> <span><b>Most used first</b><br><span class="muted">Groups you use most often, and lately, come first.</span></span></label>
+      <label class="toggle"><input type="checkbox" id="autoOrderGroups"> Put groups in this order on their own, on the Automatic tidy interval below <span class="muted">(every 20 minutes by default; never the moment you switch tabs)</span></label>
       <label class="toggle"><input type="checkbox" id="linkInference"> Check page links to work out which tab a tab came from <span class="muted">(asks for page access; runs locally, nothing is sent)</span></label>
     </section>
 

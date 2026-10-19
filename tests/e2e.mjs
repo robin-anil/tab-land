@@ -193,7 +193,12 @@ try {
     assert.equal(groups.filter((g) => g.title === 'Hiring').length, 1);
   });
 
+  const setSettings = (patch) => sw.evaluate(async (p) => {
+    const { settings } = await chrome.storage.local.get('settings');
+    await chrome.storage.local.set({ settings: { ...settings, ...p } });
+  }, patch);
   await step('reorder puts the most-used group first, groups stay contiguous', async () => {
+    await setSettings({ groupOrder: 'usage' });
     await send({ type: 'reorder' });
     const tabs = (await tabsNow()).sort((a, b) => a.index - b.index);
     const groups = await sw.evaluate(() => chrome.tabGroups.query({}));
@@ -204,6 +209,21 @@ try {
       const idx = tabs.filter((t) => t.groupId === g.id).map((t) => t.index);
       assert.equal(Math.max(...idx) - Math.min(...idx) + 1, idx.length, `group ${g.title} not contiguous`);
     }
+  });
+
+  await step('recently used order: nothing moves while you read; the cycle puts the group you used last at the end', async () => {
+    await setSettings({ groupOrder: 'recent', autoOrderGroups: true });
+    await new Promise((r) => setTimeout(r, 300));
+    assert.ok(await sw.evaluate(() => chrome.alarms.get('tab-land-order')), 'order alarm is set');
+    const tabs = (await tabsNow()).sort((a, b) => a.index - b.index);
+    const first = tabs.find((t) => t.groupId >= 0);
+    await sw.evaluate((id) => chrome.tabs.update(id, { active: true }), first.id);
+    await new Promise((r) => setTimeout(r, 1500));
+    let now = (await tabsNow()).sort((a, b) => a.index - b.index);
+    assert.notEqual(now[now.length - 1].groupId, first.groupId, 'moved while reading');
+    await send({ type: 'reorder' }); // what the 20-minute cycle runs
+    now = (await tabsNow()).sort((a, b) => a.index - b.index);
+    assert.equal(now[now.length - 1].id, first.id, 'the tab used last should end its group, at the end of the window');
   });
 
   await step('palette finds open tabs by title words and switches to them', async () => {

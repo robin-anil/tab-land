@@ -1,11 +1,14 @@
-// Plan a usage-ordered layout for one window. Pinned tabs stay put; groups move as blocks.
+// Plan the layout of one window. Pinned tabs stay put; groups move as blocks.
+//   order 'usage'  most-used first (frecency score)
+//   order 'recent' least recently used first, so the group you used last sits at the end, and inside each
+//                  group the tab you used last sits at its end
 
 /**
  * @param {Array} tabs  tabs of ONE window (any order)
  * @param {(t)=>number} scoreOf
  * @returns {{startIndex:number, units:Array<{type:'tab',tabId}|{type:'group',groupId,tabIds}>, changed:boolean}}
  */
-export function planWindowOrder(tabs, scoreOf, { groupsAsUnits = true } = {}) {
+export function planWindowOrder(tabs, scoreOf, { groupsAsUnits = true, order = 'usage', lastUsed = (t) => Math.max(t.lastActivated || 0, t.lastAccessed || 0) } = {}) {
   const sorted = [...tabs].sort((a, b) => a.index - b.index);
   const pinned = sorted.filter((t) => t.pinned);
   const rest = sorted.filter((t) => !t.pinned);
@@ -25,7 +28,13 @@ export function planWindowOrder(tabs, scoreOf, { groupsAsUnits = true } = {}) {
       units.push({ type: 'tab', tabId: t.id, tab: t, firstIndex: t.index });
     }
   }
-  for (const u of units) {
+  if (order === 'recent') {
+    for (const u of units) {
+      u.score = u.type === 'group' ? Math.max(...u.tabs.map(lastUsed)) : lastUsed(u.tab);
+      if (u.type === 'group') { u.tabs.sort((a, b) => lastUsed(a) - lastUsed(b) || a.index - b.index); u.tabIds = u.tabs.map((t) => t.id); }
+    }
+    units.sort((a, b) => a.score - b.score || a.firstIndex - b.firstIndex);
+  } else for (const u of units) {
     if (u.type === 'group') {
       u.tabs.sort((a, b) => scoreOf(b) - scoreOf(a) || a.index - b.index);
       const scores = u.tabs.map(scoreOf);
@@ -36,7 +45,7 @@ export function planWindowOrder(tabs, scoreOf, { groupsAsUnits = true } = {}) {
       u.score = scoreOf(u.tab);
     }
   }
-  units.sort((a, b) => b.score - a.score || a.firstIndex - b.firstIndex);
+  if (order !== 'recent') units.sort((a, b) => b.score - a.score || a.firstIndex - b.firstIndex);
 
   const target = units.flatMap((u) => (u.type === 'group' ? u.tabIds : [u.tabId]));
   const current = rest.map((t) => t.id);

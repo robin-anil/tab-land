@@ -199,7 +199,8 @@ export async function reorderAll(ctx) {
     catch (e) { if (isMissingTabError(e)) return false; throw e; }
   };
   for (const [, wtabs] of byWindow) {
-    const plan = planWindowOrder(wtabs, scoreOf, { groupsAsUnits: ctx.settings.reorderGroupsAsBlocks });
+    const lastUsed = (t) => (ctx.isProtected(t) ? 0 : Math.max(t.lastActivated || 0, t.lastAccessed || 0));
+    const plan = planWindowOrder(wtabs, scoreOf, { groupsAsUnits: ctx.settings.reorderGroupsAsBlocks, order: ctx.settings.groupOrder, lastUsed });
     if (!plan.changed) continue;
     for (const u of plan.units) {
       if (u.type !== 'group') continue;
@@ -214,7 +215,7 @@ export async function reorderAll(ctx) {
       if (ok) { index += u.type === 'group' ? u.tabIds.length : 1; moved++; }
     }
   }
-  return { moved };
+  return { moved, order: ctx.settings.groupOrder };
 }
 
 /**

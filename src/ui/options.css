@@ -70,3 +70,5 @@ kbd { border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 4p
 .kind.enrich { background: var(--blue-tint); color: var(--blue-ink); }
 .learn .what { font-weight: 550; }
 .learn .why { font-size: 12px; color: var(--ink-3); }
+
+.sub-label { margin: 16px 0 6px; font-size: 12.5px; font-weight: 600; color: var(--ink-2); }

@@ -240,7 +240,7 @@ export function createFakeChrome({ now = () => Date.now() } = {}) {
         const g = groups.get(id); if (!g) throw new Error(`No group with id: ${id}.`);
         const members = [...tabs.values()].filter((t) => t.groupId === id).sort((a, b) => a.index - b.index);
         const rest = windowTabs(g.windowId).filter((t) => t.groupId !== id);
-        const at = Math.max(0, Math.min(index, rest.length));
+        const at = index === -1 ? rest.length : Math.max(0, Math.min(index, rest.length)); // -1 = the end, as in Chrome
         rest.splice(at, 0, ...members);
         rest.forEach((x, k) => { x.index = k; });
         return clone(g);

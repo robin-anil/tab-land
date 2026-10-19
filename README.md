@@ -64,7 +64,11 @@ Ask also lists groups that look like they should be one, with a one-tap **Merge*
 Extra copies and versions close on their own after 10 minutes without use, every few minutes and right after you open a page that's already open. You can change the time or turn this off in Settings. Everything else waits for you to choose it, unless you turn on automatic cleanup. **Undo close** brings back the last tabs it closed, in the same spot and group.
 
 ### Put tabs in order
-**Reorder** moves the tabs you use most to the left. Pinned tabs stay where they are, and groups move together.
+Groups are kept in **recently used last** order. The group you used most recently sits at the end of the window, and groups you haven't touched in a while drift to the start. Inside each group, the tab you used last sits at the end too.
+
+Nothing moves while you're reading. Tab Land puts things in order every 20 minutes (the same interval as automatic tidy), and when you press **Reorder**. Pinned tabs stay where they are, and groups move together.
+
+Prefer the old way? In Settings, pick **Most used first** to put the tabs you use most on the left.
 
 ### Save a group for later
 In the **Contexts** view, **Park** saves a whole group and closes its tabs to free up memory. **Resume** brings the group back exactly as it was.

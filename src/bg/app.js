@@ -15,6 +15,7 @@ import { askHome, askStart, askAnswer, askApply, askUndo } from './ask.js';
 export const ALARM = 'tab-land-auto';
 export const LEARN_ALARM = 'tab-land-learn';
 export const SWEEP_ALARM = 'tab-land-sweep';
+export const ORDER_ALARM = 'tab-land-order';
 
 const int = (v) => (Number.isInteger(Number(v)) ? Number(v) : null);
 
@@ -103,6 +104,9 @@ export function createApp(deps) {
     await chrome.alarms.clear(ALARM);
     if (s.autoEnabled) await chrome.alarms.create(ALARM, { periodInMinutes: Math.max(5, Number(s.autoIntervalMin) || 20) });
     if (!(await chrome.alarms.get(LEARN_ALARM))) await chrome.alarms.create(LEARN_ALARM, { periodInMinutes: 24 * 60, delayInMinutes: 60 });
+    // Groups are put in order on the tidy cycle, never the moment you switch tabs.
+    await chrome.alarms.clear(ORDER_ALARM);
+    if (s.autoOrderGroups) await chrome.alarms.create(ORDER_ALARM, { periodInMinutes: Math.max(5, Number(s.autoIntervalMin) || 20) });
     await chrome.alarms.clear(SWEEP_ALARM);
     if (s.autoCloseDuplicates) await chrome.alarms.create(SWEEP_ALARM, { periodInMinutes: 5 });
   }
@@ -112,6 +116,7 @@ export function createApp(deps) {
     if (a.name === ALARM) return ctx.exclusive(() => tidy(ctx, { auto: true }, deps2), { skipIfBusy: true });
     if (a.name === LEARN_ALARM) return ctx.exclusive(() => autoTune(ctx), { skipIfBusy: true });
     if (a.name === SWEEP_ALARM) return ctx.exclusive(() => sweepDuplicates(ctx), { skipIfBusy: true });
+    if (a.name === ORDER_ALARM) return ctx.exclusive(() => reorderAll(ctx), { skipIfBusy: true });
   }
 
   function onCommand(cmd) {

@@ -48,6 +48,8 @@ export const DEFAULTS = {
   dupIdleMinutes: 10,        // how long a copy or version must sit unused before it goes
   respectManualGroups: true,
   reorderGroupsAsBlocks: true,
+  groupOrder: 'recent',       // 'recent': the group you used last goes to the end; 'usage': most used first
+  autoOrderGroups: true,      // put groups in order every autoIntervalMin minutes (not while you switch tabs)
   halfLifeDays: 3,
   linkInference: false,
 
@@ -93,6 +95,7 @@ export function sanitizeSettings(raw) {
   out.autoIntervalMin = Math.max(5, out.autoIntervalMin);
   out.jevTimeoutMs = Math.min(60000, Math.max(2000, out.jevTimeoutMs));
   if (!['goals', 'useCases'].includes(out.groupingMode)) out.groupingMode = DEFAULTS.groupingMode;
+  if (!['recent', 'usage'].includes(out.groupOrder)) out.groupOrder = DEFAULTS.groupOrder;
   out.goalThreshold = Math.min(0.9, Math.max(0.1, out.goalThreshold));
   out.dupIdleMinutes = Math.min(1440, Math.max(1, out.dupIdleMinutes));
   return out;

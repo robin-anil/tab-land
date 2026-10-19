@@ -133,7 +133,7 @@ $('group').onclick = () => busy($('group'), 'Grouping…', async () => {
 
 $('reorder').onclick = () => busy($('reorder'), 'Ordering…', async () => {
   const r = await send({ type: 'reorder' });
-  status(r.moved ? 'Most-used tabs are now on the left.' : 'Already in usage order.');
+  status(r.moved ? (r.order === 'recent' ? 'Recently used groups are now at the end.' : 'Most-used tabs are now on the left.') : 'Already in order.');
 });
 
 $('tidy').onclick = () => busy($('tidy'), 'Tidying…', async () => {
