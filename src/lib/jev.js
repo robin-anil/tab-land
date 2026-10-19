@@ -307,6 +307,36 @@ export function buildCloseReviewRequests(candidates, { settings, chunk = 15 }) {
   return requests;
 }
 
+/**
+ * Ask mode: does each tab fit what the user described ("the dashboards and funnel reports")?
+ * One noul per tab (docs: one yes/no judgment per question), all tabs in the state for context.
+ * Batched under MAX_REQUEST_CHARS; parse with parseNoulResponses.
+ */
+export function buildMatchRequests(tabs, { description, target = '', settings, chunk = 40, maxChars = MAX_REQUEST_CHARS }) {
+  const shown = tabs.slice(0, 200);
+  const lines = shown.map((t, i) => `[${i + 1}] ${describeTab(t, settings)}`);
+  const what = clip(description, 200);
+  const state = `The user said which of their open browser tabs to move${target ? ` into the group "${clip(target, 60)}"` : ''}: "${what}".\n\nOpen tabs, each line [n] "title" — site/path:\n${lines.join('\n')}`;
+  const qSize = 420 + what.length;
+  const fit = Math.max(1, Math.min(chunk, Math.floor((maxChars - state.length - 200) / qSize)));
+  const requests = [];
+  for (let s = 0; s < shown.length; s += fit) {
+    const questions = {};
+    const idMap = {};
+    shown.slice(s, s + fit).forEach((t, k) => {
+      const n = s + k + 1;
+      idMap[`tab_${n}`] = t.id;
+      questions[`tab_${n}`] = {
+        type: 'noul',
+        instructions: `Is tab [${n}] one of the tabs the user means by "${what}"?`,
+        criteria: { true: 'the page is what they described, or clearly part of it', false: 'the page is about something else, even if it is on a similar site' },
+      };
+    });
+    requests.push({ body: { model: settings.jevModel || 'jev-latest', state, questions }, idMap });
+  }
+  return requests;
+}
+
 /** → Map<tabId, probability 0..1> */
 export function parseNoulResponses(requests, results) {
   const out = new Map();

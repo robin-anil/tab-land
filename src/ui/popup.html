@@ -19,9 +19,15 @@
     </button>
   </header>
 
+  <nav class="seg mode" role="tablist" aria-label="Mode">
+    <button role="tab" data-mode="search" aria-selected="true" aria-controls="searchMode">Search</button>
+    <button role="tab" data-mode="ask" aria-selected="false" aria-controls="askMode">Ask</button>
+  </nav>
+
+  <div id="searchMode">
   <div class="search">
     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
-    <input id="q" type="search" placeholder="Search tabs, closed tabs and history" autocomplete="off" spellcheck="false" aria-label="Search tabs" aria-controls="resultList">
+    <input id="q" type="search" placeholder="Search tabs, or type > to ask" autocomplete="off" spellcheck="false" aria-label="Search tabs" aria-controls="resultList">
     <kbd id="qHint">⌘⇧K</kbd>
   </div>
 
@@ -90,6 +96,34 @@
     </div>
   </main>
   </div>
+  </div>
+
+  <section id="askMode" hidden aria-label="Ask">
+    <div id="askThread" class="thread" aria-live="polite">
+      <div id="askIntro" class="intro">
+        <div class="intro-title">Move and merge tabs by saying so</div>
+        <div class="muted">Tell Tab Land what goes where. Clear requests happen right away, with Undo; when it has to guess, it asks first and shows the moves.</div>
+        <div class="sec">Try</div>
+        <div class="tries">
+          <button class="try" data-text="Move the dashboards into ">Move the dashboards into <b>…</b></button>
+          <button class="try" data-text="Merge ">Merge <b>…</b> into <b>…</b></button>
+          <button class="try" data-text="Take the LinkedIn tabs out of ">Take the LinkedIn tabs out of <b>…</b></button>
+        </div>
+        <div id="lookAlikeSec" hidden>
+          <div class="sec">Look alike · could merge</div>
+          <ul id="lookAlikes" class="pairs"></ul>
+        </div>
+      </div>
+    </div>
+    <div id="askToast" class="toast" role="status" hidden><span id="askToastText"></span><button class="link" id="askUndo">Undo</button></div>
+    <form id="askForm" class="composer">
+      <label for="askInput" class="sr">Tell Tab Land what to do</label>
+      <textarea id="askInput" rows="2" placeholder="Move the dashboard tabs into Growth…" spellcheck="false"></textarea>
+      <button class="send" id="askSend" type="submit" aria-label="Send" disabled>
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m13 6 6 6-6 6"/></svg>
+      </button>
+    </form>
+  </section>
 
   <footer>
     <span id="status" class="muted" role="status"></span>

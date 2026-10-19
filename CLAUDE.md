@@ -1,6 +1,6 @@
 # Tab Land: notes for Claude
 
-- Anything that touches Jev (src/lib/jev.js, src/bg/grouping.js, src/lib/tune.js): use the `typesafe-ai`
+- Anything that touches Jev (src/lib/jev.js, src/bg/grouping.js, src/bg/ask.js, src/lib/tune.js): use the `typesafe-ai`
   skill and check the live docs at https://docs.typesafe.ai (llms.txt index; append `.md` to page paths)
   for current limits and primitive guidance before changing requests.
 - Known Jev limits we rely on: 64k tokens per request / 32k per question, at most 255 Choice options,

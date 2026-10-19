@@ -260,6 +260,10 @@ q.addEventListener('keydown', (e) => {
   else if (e.key === 'Enter') { e.preventDefault(); openResult(sel); }
   else if (e.key === 'Escape' && q.value) { e.preventDefault(); q.value = ''; runSearch(); }
 });
+q.addEventListener('input', () => {
+  // ">" switches to Ask, carrying whatever follows.
+  if (q.value.startsWith('>')) { const rest = q.value.slice(1).trimStart(); q.value = ''; runSearch(); setMode('ask'); askInput.value = rest; syncSend(); }
+});
 q.focus();
 
 // ---------------------------------------------------------------- views + contexts
@@ -268,11 +272,11 @@ const GROUP_HEX = { grey: '#8a8f98', blue: '#5e8bff', red: '#ff6b7a', yellow: '#
 const VIEWS = { cleanup: 'viewCleanup', contexts: 'viewContexts', later: 'viewLater' };
 
 function showView(v) {
-  for (const b of document.querySelectorAll('.seg button')) b.setAttribute('aria-selected', String(b.getAttribute('data-view') === v));
+  for (const b of document.querySelectorAll('.seg:not(.mode) button')) b.setAttribute('aria-selected', String(b.getAttribute('data-view') === v));
   for (const [k, id] of Object.entries(VIEWS)) { const el = $(id); if (el) el.hidden = k !== v; }
   if (v === 'contexts') loadContexts();
 }
-document.querySelector('.seg').addEventListener('click', (/** @type {any} */ e) => { const b = e.target.closest('button[data-view]'); if (b) showView(b.getAttribute('data-view')); });
+document.querySelector('.seg:not(.mode)').addEventListener('click', (/** @type {any} */ e) => { const b = e.target.closest('button[data-view]'); if (b) showView(b.getAttribute('data-view')); });
 
 function ago(t) {
   const m = (Date.now() - t) / 60e3;
@@ -318,3 +322,168 @@ async function loadContexts() {
   $('nContexts').textContent = c.parked.length || '';
 }
 send({ type: 'contexts' }).then((c) => { $('nContexts').textContent = c.parked.length || ''; }).catch(() => {});
+
+// ---------------------------------------------------------------- Ask: move and merge by saying so
+
+const askInput = $('askInput');
+const thread = $('askThread');
+let askBusy = false;
+const svgOk = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>';
+
+function setMode(m) {
+  for (const b of document.querySelectorAll('.seg.mode button')) b.setAttribute('aria-selected', String(b.getAttribute('data-mode') === m));
+  $('searchMode').hidden = m !== 'search';
+  $('askMode').hidden = m !== 'ask';
+  document.body.classList.toggle('asking', m === 'ask');
+  if (m === 'ask') { loadAskHome(); askInput.focus(); } else q.focus();
+}
+document.querySelector('.seg.mode').addEventListener('click', (/** @type {any} */ e) => { const b = e.target.closest('button[data-mode]'); if (b) setMode(b.getAttribute('data-mode')); });
+
+function el(tag, cls, text) { const x = document.createElement(tag); if (cls) x.className = cls; if (text != null) x.textContent = text; return x; }
+function dot(color) { const d = el('span', 'dot'); d.style.background = GROUP_HEX[color] || color || GROUP_HEX.grey; return d; }
+function scrollDown() { thread.scrollTop = thread.scrollHeight; }
+function say(text, { ok = false, thinking = false } = {}) {
+  const b = el('div', 'bot' + (thinking ? ' thinking' : ''));
+  if (ok) { const i = el('span', 'ok'); i.innerHTML = svgOk; b.append(i); }
+  b.append(el('div', '', text));
+  thread.append(b); scrollDown();
+  return b;
+}
+function syncSend() { $('askSend').disabled = askBusy || !askInput.value.trim(); }
+
+async function loadAskHome() {
+  try {
+    const h = await send({ type: 'askHome' });
+    const ul = $('lookAlikes'); ul.replaceChildren();
+    for (const p of h.lookAlikes) {
+      const li = document.createElement('li');
+      const what = el('span', 'what');
+      what.append(el('b', '', p.from.title), ' ', el('span', 'n', String(p.from.count)), ' into ', el('b', '', p.into.title), ' ', el('span', 'n', String(p.into.count)));
+      const go = el('button', 'link', 'Merge');
+      go.onclick = () => ask(`Merge ${p.from.title} into ${p.into.title}`);
+      li.append(dot(p.into.color), what, go);
+      ul.append(li);
+    }
+    $('lookAlikeSec').hidden = !h.lookAlikes.length;
+    $('askToast').hidden = !h.canUndo || !$('askToastText').textContent;
+  } catch (e) { status(e.message, true); }
+}
+
+for (const b of document.querySelectorAll('.try')) b.addEventListener('click', () => { askInput.value = b.getAttribute('data-text') || ''; askInput.focus(); syncSend(); });
+askInput.addEventListener('input', syncSend);
+askInput.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); $('askForm').requestSubmit(); } });
+$('askForm').addEventListener('submit', (e) => { e.preventDefault(); const t = askInput.value.trim(); if (t && !askBusy) ask(t); });
+
+async function call(msg) {
+  askBusy = true; syncSend();
+  const wait = say('Working on it…', { thinking: true });
+  try { return await send(msg); }
+  catch (e) { say(`Something went wrong: ${e.message}`); return null; }
+  finally { wait.remove(); askBusy = false; syncSend(); }
+}
+
+async function ask(text) {
+  $('askIntro').hidden = true;
+  thread.append(el('div', 'me', text)); scrollDown();
+  askInput.value = ''; syncSend();
+  const r = await call({ type: 'ask', text });
+  if (r) handle(r);
+}
+
+function handle(r) {
+  if (r.error) say(`Jev couldn't help this time (${r.error}), so I matched on words.`);
+  if (r.reply) return say(r.reply);
+  if (r.done) return done(r.done);
+  if (r.questions) return askQuestions(r.session, r.questions);
+  if (r.preview) return showPreview(r.session, r.preview);
+}
+
+function done(d) {
+  say(d.message, { ok: true });
+  $('askToastText').textContent = d.message;
+  $('askToast').hidden = false;
+  load();
+}
+
+function askQuestions(session, questions) {
+  const answers = {};
+  say(session.sure.length ? `${session.sure.length} tab${session.sure.length === 1 ? '' : 's'} clearly fit. A few I'm not sure about:` : 'I need to check a few things first:');
+  const cards = questions.map((qq, i) => {
+    const c = el('div', 'card' + (i === 0 ? ' active' : ''));
+    c.append(el('div', 'q', qq.text));
+    if (qq.samples?.length) {
+      const sm = el('div', 'samples');
+      for (const t of qq.samples) sm.append(el('div', '', t));
+      if (qq.more) sm.append(el('div', 'muted', `and ${qq.more} more`));
+      c.append(sm);
+    }
+    const opts = el('div', 'opts');
+    for (const o of qq.options) {
+      const b = el('button', 'btn', o.label);
+      b.onclick = async () => {
+        answers[qq.id] = o.value;
+        opts.querySelectorAll('button').forEach((x) => x.classList.toggle('picked', x === b));
+        c.classList.remove('active');
+        const next = cards.find((x, k) => !(questions[k].id in answers));
+        if (next) { next.classList.add('active'); next.scrollIntoView({ block: 'nearest' }); return; }
+        const r = await call({ type: 'askAnswer', session, answers });
+        if (r) handle(r);
+      };
+      opts.append(b);
+    }
+    c.append(opts);
+    thread.append(c);
+    return c;
+  });
+  scrollDown();
+}
+
+function showPreview(session, pv) {
+  const c = el('div', 'card active');
+  const hd = el('div', 'pv-hd');
+  if (pv.target) {
+    hd.append(dot(pv.target.color), el('span', '', pv.target.name), el('span', 'muted', pv.target.isNew ? 'new group' : `${pv.target.count} → ${pv.target.count + pv.total} tabs`));
+  } else hd.append(el('span', '', 'Take out of the group'), el('span', 'muted', `${pv.tabs.length} tabs`));
+  c.append(hd);
+  for (const m of pv.merging) c.append(el('div', 'pv-merge', `${m.title} merges in · ${m.count} tab${m.count === 1 ? '' : 's'}, group closes`));
+  const list = el('ul', 'pv-list');
+  const sections = [['fit', pv.fromGroups > 1 ? `Moving in from ${pv.fromGroups} groups` : 'Fit what you asked'], ['yes', 'You said yes']];
+  for (const [key, label] of sections) {
+    const rows = pv.tabs.filter((t) => t.section === key);
+    if (!rows.length) continue;
+    list.append(Object.assign(el('li', 'pv-sec', `${label} · ${rows.length}`), { role: 'presentation' }));
+    for (const t of rows) {
+      const li = document.createElement('li');
+      const cb = el('input'); cb.type = 'checkbox'; cb.checked = true; cb.dataset.id = String(t.id); cb.setAttribute('aria-label', `Move ${t.title}`);
+      const fav = el('img', 'fav'); fav.alt = ''; if (/^https?:|^data:/.test(t.favIconUrl)) fav.src = t.favIconUrl;
+      const ti = el('div', 'title', t.title);
+      li.append(cb, fav, ti, t.p != null ? Object.assign(chip(`${t.p}%`), { title: 'How sure Jev is that this tab fits' }) : el('span'));
+      list.append(li);
+    }
+  }
+  c.append(list);
+  const go = el('button', 'btn primary pv-go');
+  const count = () => list.querySelectorAll('input:checked').length + pv.merging.reduce((a, m) => a + m.count, 0);
+  const label = () => { const n = count(); go.textContent = pv.target ? `Move ${n} tab${n === 1 ? '' : 's'}` : `Take ${n} out`; go.disabled = !n; };
+  list.addEventListener('change', label);
+  label();
+  go.onclick = async () => {
+    const ids = [...list.querySelectorAll('input:checked')].map((x) => Number(x.getAttribute('data-id')));
+    const plan = pv.target ? { ...pv.plan, moveTabIds: ids } : { ungroupTabIds: ids };
+    go.disabled = true;
+    const r = await call({ type: 'askApply', plan });
+    c.classList.remove('active');
+    if (r) handle(r);
+  };
+  c.append(go);
+  thread.append(c);
+  scrollDown();
+}
+
+$('askUndo').onclick = async () => {
+  const r = await call({ type: 'askUndo' });
+  if (!r) return;
+  $('askToast').hidden = true; $('askToastText').textContent = '';
+  say(r.restored ? `Undone. Put ${r.restored} tab${r.restored === 1 ? '' : 's'} back where they were.` : 'Nothing to undo.');
+  load();
+};

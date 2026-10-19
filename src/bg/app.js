@@ -10,6 +10,7 @@ import { listContexts, parkGroup, resumeContext, dropContext } from './contexts.
 import { learnSuggestions, applyLearn, autoTune, useCaseUsage } from './learning.js';
 import { guard } from './util.js';
 import { exportTuning } from './tuning.js';
+import { askHome, askStart, askAnswer, askApply, askUndo } from './ask.js';
 
 export const ALARM = 'tab-land-auto';
 export const LEARN_ALARM = 'tab-land-learn';
@@ -59,6 +60,11 @@ export function createApp(deps) {
       const r = await jevModels(s, { fetchImpl: ctx.fetch, retryDelay: ctx.jevRetryDelay });
       return { ok: true, models: (r?.data || r?.models || []).map((x) => x?.id || x?.name || x).filter((x) => typeof x === 'string') };
     },
+    askHome: () => askHome(ctx),
+    ask: (m) => mutate(() => askStart(ctx, { text: String(m.text || '') })),
+    askAnswer: (m) => askAnswer(ctx, { session: m.session, answers: m.answers }),
+    askApply: (m) => mutate(() => askApply(ctx, { plan: m.plan })),
+    askUndo: () => mutate(() => askUndo(ctx)),
     learn: () => learnSuggestions(ctx),
     exportTuning: () => exportTuning(ctx),
     sweep: () => mutate(() => sweepDuplicates(ctx)),

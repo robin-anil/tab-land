@@ -301,6 +301,50 @@ try {
     assert.deepEqual(await snapshot(), before);
   });
 
+  await step('Ask merges two groups from one sentence, and Undo puts them back', async () => {
+    const ids = await sw.evaluate(async () => {
+      for (const t of await chrome.tabs.query({})) if (t.groupId >= 0) await chrome.tabs.ungroup(t.id);
+      const web = (await chrome.tabs.query({})).filter((t) => /^https?:/.test(t.url) && !t.pinned).map((t) => t.id);
+      const a = await chrome.tabs.group({ tabIds: web.slice(0, 2) }); await chrome.tabGroups.update(a, { title: 'Growth' });
+      const b = await chrome.tabs.group({ tabIds: web.slice(2, 4) }); await chrome.tabGroups.update(b, { title: 'Growth 2' });
+      return { a, b };
+    });
+    await ui.goto(`chrome-extension://${extId}/src/ui/popup.html`);
+    await ui.click('.seg.mode button[data-mode="ask"]');
+    await ui.waitForSelector('#askMode:not([hidden])');
+    await ui.waitForSelector('#lookAlikeSec:not([hidden])');
+    await ui.fill('#askInput', 'Merge Growth 2 into Growth');
+    await ui.press('#askInput', 'Enter');
+    await ui.waitForSelector('.bot .ok');
+    const groups = await sw.evaluate(() => chrome.tabGroups.query({}));
+    assert.deepEqual(groups.map((g) => g.title), ['Growth']);
+    assert.equal((await sw.evaluate((gid) => chrome.tabs.query({ groupId: gid }), ids.a)).length, 4);
+    await ui.screenshot({ path: path.join(shots, 'ask.png') });
+    await ui.click('#askUndo');
+    await ui.waitForFunction(() => [...document.querySelectorAll('.bot')].some((b) => b.textContent.startsWith('Undone')));
+    const after = (await sw.evaluate(() => chrome.tabGroups.query({}))).map((g) => g.title).sort();
+    assert.deepEqual(after, ['Growth', 'Growth 2']);
+  });
+
+  await step('Ask with a description shows the tabs to check before moving them', async () => {
+    await ui.goto(`chrome-extension://${extId}/src/ui/popup.html`);
+    await ui.click('.seg.mode button[data-mode="ask"]');
+    await ui.fill('#askInput', 'Move the pull requests and docs into Review');
+    await ui.press('#askInput', 'Enter');
+    await ui.waitForSelector('.pv-go, .card .opts');
+    await ui.screenshot({ path: path.join(shots, 'ask-check.png') });
+    if (await ui.$('.card .opts')) for (const b of await ui.$$('.card .opts .btn:first-child')) await b.click();
+    await ui.waitForSelector('.pv-go');
+    const before = (await sw.evaluate(() => chrome.tabGroups.query({ title: 'Review' }))).length;
+    assert.equal(before, 0, 'nothing moves before the check');
+    await ui.click('.pv-go');
+    await ui.waitForFunction(() => document.querySelectorAll('.bot .ok').length > 0);
+    const g = await sw.evaluate(() => chrome.tabGroups.query({ title: 'Review' }));
+    assert.equal(g.length, 1);
+    await ui.click('#askUndo');
+    await ui.waitForFunction(() => [...document.querySelectorAll('.bot')].some((b) => b.textContent.startsWith('Undone')));
+  });
+
   await step('bad key surfaces an error and falls back to heuristics', async () => {
     await sw.evaluate(async () => {
       const { settings } = await chrome.storage.local.get('settings');
