@@ -10,11 +10,11 @@
 // Nothing is remembered between requests except the one-step undo.
 import { isWebUrl } from '../lib/url.js';
 import { hashColor } from '../lib/settings.js';
-import { runAll, buildMatchRequests, parseNoulResponses } from '../lib/jev.js';
-import { parseInstruction, resolveGroup, exactSelection, localMatch, includeQuestions, lookAlikes, SURE, MAYBE } from '../lib/ask.js';
+import { runAll, buildMatchRequests, buildRouteRequest, parseNoulResponses } from '../lib/jev.js';
+import { includeQuestions, lookAlikes, nameSpans, readChoice, ACTIONS, ACTION_LABELS, SURE, MAYBE, ACT, ASK } from '../lib/ask.js';
 import { withRetry } from './util.js';
 
-const HELP = 'I can move, merge, rename and ungroup tabs. Try "Move the dashboards into Growth", "Merge Growth 2 into Growth" or "Take the LinkedIn tabs out of Hiring".';
+const HELP = 'I can move tabs into groups, take them out, merge, rename and ungroup groups. Try “Move the dashboards into Growth” or “Merge Growth 2 into Growth”.';
 const int = (v) => (Number.isInteger(Number(v)) && v !== null && v !== '' ? Number(v) : null);
 const ints = (xs) => (Array.isArray(xs) ? xs.map(int).filter((x) => x != null) : []);
 const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
@@ -42,102 +42,177 @@ export async function askHome(ctx) {
 }
 
 export async function askStart(ctx, { text }) {
-  const instruction = String(text || '').slice(0, 300);
-  const intent = parseInstruction(instruction);
-  if (intent.kind === 'unknown') return { reply: HELP };
+  const instruction = String(text || '').trim().slice(0, 300);
+  if (!instruction) return { reply: HELP };
   const st = await live(ctx);
-  const { tabs, groups } = st;
-  const notFound = (name) => ({ reply: `I can't find a group called “${name}”. Your groups: ${groups.filter((g) => g.title).slice(0, 8).map((g) => g.title).join(', ') || 'none yet'}.` });
-
-  if (intent.kind === 'merge') {
-    let sources = [];
-    for (const name of intent.from) {
-      const r = resolveGroup(name, groups);
-      if (!r.candidates.length) return notFound(name);
-      sources.push(...(r.match ? [r.match] : r.candidates)); // "merge the Growth groups": all of them
-    }
-    let into;
-    if (intent.into) {
-      const r = resolveGroup(intent.into, groups);
-      if (r.match) into = r.match;
-      else if (r.candidates.length) into = [...r.candidates].sort((a, b) => b.count - a.count)[0], sources.push(...r.candidates);
-      else return notFound(intent.into);
-    } else {
-      into = [...sources].sort((a, b) => b.count - a.count)[0];
-    }
-    sources = [...new Map(sources.filter((g) => g.id !== into.id).map((g) => [g.id, g])).values()];
-    if (!sources.length) return { reply: `“${into.title}” is already one group.` };
-    return applyNow(ctx, { targetId: into.id, targetName: into.title, mergeIds: sources.map((g) => g.id) });
-  }
-
-  if (intent.kind === 'rename' || intent.kind === 'ungroup') {
-    const r = resolveGroup(intent.group, groups);
-    if (!r.candidates.length) return notFound(intent.group);
-    if (!r.match) return { reply: `There are ${r.candidates.length} groups called “${r.candidates[0].title}”. Say which, for example “${intent.kind === 'rename' ? 'Rename' : 'Ungroup'} ${r.candidates[0].title}” after merging them.` };
-    if (intent.kind === 'rename') return applyNow(ctx, { renameId: r.match.id, renameTo: intent.to.slice(0, 60) });
-    return applyNow(ctx, { ungroupTabIds: tabs.filter((t) => t.groupId === r.match.id).map((t) => t.id) });
-  }
-
-  // ---- move ----
-  let fromIds = null;
-  if (intent.from) {
-    const r = resolveGroup(intent.from, groups);
-    if (!r.candidates.length) return notFound(intent.from);
-    fromIds = (r.match ? [r.match] : r.candidates).map((g) => g.id);
-  }
-  let target = null;
-  let targetCandidates = [];
-  const targetName = intent.into ? intent.into.slice(0, 60) : null;
-  if (targetName) {
-    const r = resolveGroup(targetName, groups);
-    if (r.match) target = r.match;
-    else targetCandidates = r.candidates;
-  } else if (!fromIds) {
-    return { reply: 'Say where they should go, for example “into Growth”, or which group to take them out of.' };
-  }
-  const inTarget = (t) => (target ? t.groupId === target.id : targetCandidates.some((g) => g.id === t.groupId));
-  const pool = tabs.filter((t) => (fromIds ? fromIds.includes(t.groupId) : true) && !inTarget(t));
-  if (!pool.length) return { reply: fromIds ? 'That group has no tabs I can move.' : 'There are no tabs to move.' };
-
-  const sure = new Map();
-  const unsure = new Map();
-  let guessed = false;
-  let via = 'exact';
-  let error = null;
-  const exact = exactSelection(intent.what, pool, groups);
-  if (exact) {
-    for (const id of exact.tabIds) sure.set(id, 1);
-  } else {
-    guessed = true;
-    const useJev = !!ctx.settings.jevApiKey;
-    const sendable = useJev ? pool.filter(ctx.aiAllowed) : [];
-    let probs = new Map();
-    if (sendable.length) {
-      const reqs = buildMatchRequests(sendable, { description: intent.what, target: targetName || '', settings: ctx.settings });
-      const { results, errors } = await runAll(ctx.settings, reqs, { fetchImpl: ctx.fetch, retryDelay: ctx.jevRetryDelay });
-      probs = parseNoulResponses(reqs, results);
-      if (probs.size) via = 'jev';
-      else if (errors.length) error = errors[0].message;
-    }
-    // Tabs Jev didn't judge (excluded domains, no key, a failed call) fall back to word matching.
-    const local = localMatch(intent.what, pool.filter((t) => !probs.has(t.id)));
-    if (via !== 'jev') via = 'words';
-    for (const [id, p] of local) probs.set(id, p >= 0.99 ? 0.8 : p >= 0.5 ? 0.5 : 0);
-    for (const [id, p] of probs) { if (p >= SURE) sure.set(id, p); else if (p >= MAYBE) unsure.set(id, p); }
-  }
-  if (!sure.size && !unsure.size) return { reply: `I couldn't find tabs that fit “${intent.what}”.${error ? ` (Jev: ${error})` : ''}` };
-
-  const session = {
-    v: 1, instruction, what: intent.what, targetName, targetId: target?.id ?? null,
-    targetCandidates: targetCandidates.map((g) => g.id), fromIds, via,
-    sure: [...sure].map(([id, p]) => [id, +p.toFixed(3)]), unsure: [...unsure].map(([id, p]) => [id, +p.toFixed(3)]),
-  };
-  const questions = buildQuestions(session, st);
-  if (!guessed && !questions.length) return applyNow(ctx, planFrom(session, {}, st));
-  session.questions = questions.map(({ id, kind, tabIds }) => ({ id, kind, tabIds: tabIds || [] }));
-  if (questions.length) return { session, questions, error };
-  return { session, preview: preview(session, {}, st), error };
+  if (!ctx.settings.jevApiKey) return { reply: 'Ask needs a Jev API key to read what you typed. Add one in Settings.' };
+  const r = await readRequest(ctx, instruction, st);
+  if (r.reply) return r;
+  return continueRoute(ctx, { v: 2, kind: 'route', instruction, route: r.route }, {}, st);
 }
+
+// ---- step 1: Jev reads the request ----
+
+async function readRequest(ctx, instruction, st) {
+  const s = ctx.settings;
+  const groups = st.groups.filter((g) => g.count).map((g) => ({
+    ...g, examples: st.tabs.filter((t) => t.groupId === g.id && ctx.aiAllowed(t)).slice(0, 3).map((t) => t.title || ''),
+  }));
+  const req = buildRouteRequest(instruction, { groups, spans: nameSpans(instruction), actions: ACTIONS, settings: s });
+  const { results, errors } = await runAll(s, [req], { fetchImpl: ctx.fetch, retryDelay: ctx.jevRetryDelay });
+  const a = results[0]?.answers;
+  if (!a) return { reply: `Jev couldn't read that just now${errors[0] ? ` (${errors[0].message})` : ''}. Try again in a moment.` };
+  const slot = (x) => {
+    const c = readChoice(x);
+    if (!c) return { value: null, confidence: 0, top: [] };
+    const map = (k) => (req.gKey.has(k) ? req.gKey.get(k) : k === 'new' ? 'new' : null);
+    return { value: map(c.key), confidence: c.confidence, top: c.top.map(([k, p]) => [map(k), +p.toFixed(3)]) };
+  };
+  const action = readChoice(a.action);
+  const name = readChoice(a.new_name);
+  const merge = [...req.mergeKey].filter(([q]) => (a[q]?.noul ?? 0) >= 0.5).map(([, id]) => id);
+  return {
+    route: {
+      action: action ? { value: action.key in ACTIONS ? action.key : 'none', confidence: action.confidence, top: action.top.map(([k, p]) => [k, +p.toFixed(3)]) } : { value: 'none', confidence: 0, top: [] },
+      destination: slot(a.destination), subject: slot(a.subject),
+      newName: name && req.spanKey.has(name.key) ? { value: req.spanKey.get(name.key), confidence: name.confidence } : { value: null, confidence: name?.confidence ?? 0 },
+      merge,
+    },
+  };
+}
+
+const groupLabel = (g) => `${g.title || 'Untitled'} · ${plural(g.count, 'tab')}`;
+const titleCase = (x) => (x ? x.charAt(0).toUpperCase() + x.slice(1) : x);
+
+/** Ask back when Jev isn't sure: the likeliest options, as buttons. */
+function pickQuestion(id, text, top, st, { allowNew = false } = {}) {
+  const options = [];
+  for (const [v] of top) {
+    if (v === 'new' && allowNew) options.push({ value: 'new', label: 'A new group' });
+    else if (v != null && st.gById.get(v)) options.push({ value: String(v), label: groupLabel(st.gById.get(v)) });
+  }
+  return options.length ? { id, kind: 'pick', text, options } : null;
+}
+
+/**
+ * Step 2 onward: decide what to do with Jev's reading and any answers so far. Everything Jev was
+ * sure of (ACT) goes ahead with Undo; anything less is asked about first.
+ */
+async function continueRoute(ctx, session, answers, st) {
+  const R = session.route;
+  let sure = true;
+  const conf = (c) => { if (c < ACT) sure = false; return c; };
+
+  // What to do
+  const action = answers.action || R.action.value;
+  if (!answers.action) {
+    if (R.action.confidence < ASK && R.action.top.length > 1) {
+      return { session, questions: [{ id: 'action', kind: 'pick', text: 'What would you like to do?', options: R.action.top.filter(([k]) => k !== 'none').map(([k]) => ({ value: k, label: ACTION_LABELS[k] })) }] };
+    }
+    conf(R.action.confidence);
+  }
+  if (!(action in ACTIONS) || action === 'none') return { reply: HELP };
+
+  // Which group(s)
+  const need = (slotName, text, opts = {}) => {
+    const key = slotName;
+    if (answers[key]) return { value: answers[key] === 'new' ? 'new' : Number(answers[key]) };
+    const sl = R[slotName];
+    if (sl.value == null || sl.confidence < ASK) {
+      const q = pickQuestion(key, text, sl.top.length ? sl.top : [], st, opts);
+      if (q && (sl.value == null ? q.options.length >= 1 : q.options.length > 1)) return { question: q };
+      if (sl.value == null) return { missing: true };
+    }
+    conf(sl.confidence);
+    return { value: sl.value };
+  };
+  const ask = (q) => ({ session, questions: [q] });
+  const groupOf = (id) => (id != null && id !== 'new' ? st.gById.get(id) || null : null);
+  const newName = R.newName.value ? titleCase(R.newName.value) : null;
+
+  if (action === 'rename' || action === 'ungroup') {
+    const subj = need('subject', action === 'rename' ? 'Which group should get the new name?' : 'Which group should I ungroup?');
+    if (subj.question) return ask(subj.question);
+    const g = groupOf(subj.value);
+    if (!g) return { reply: `I couldn't tell which group you mean. ${HELP}` };
+    if (action === 'ungroup') {
+      const plan = { ungroupTabIds: st.tabs.filter((t) => t.groupId === g.id).map((t) => t.id) };
+      return confirmOrApply(ctx, session, answers, sure, `Ungroup ${g.title || 'this group'} (${plural(g.count, 'tab')})?`, plan);
+    }
+    if (!newName) return { reply: `What should ${g.title || 'it'} be called? Say it like “Rename ${g.title || 'it'} to …”.` };
+    conf(R.newName.confidence);
+    if ((g.title || '') === newName) return { reply: `It's already called ${newName}.` };
+    const clash = st.groups.find((x) => x.id !== g.id && (x.title || '').toLowerCase() === newName.toLowerCase());
+    if (clash && !answers.clash) {
+      return ask({ id: 'clash', kind: 'clash', text: `There's already a group called ${clash.title} (${plural(clash.count, 'tab')}). Merge ${g.title || 'this group'} into it?`, options: [{ value: 'merge', label: `Merge into ${clash.title}` }, { value: 'keep', label: 'Keep both' }] });
+    }
+    if (clash && answers.clash === 'merge') return applyNow(ctx, { targetId: clash.id, targetName: clash.title, mergeIds: [g.id] });
+    return confirmOrApply(ctx, session, answers, sure && !answers.clash, `Rename ${g.title || 'the group'} to ${newName}?`, { renameId: g.id, renameTo: newName });
+  }
+
+  if (action === 'merge') {
+    const dest = need('destination', 'Which group should they be merged into?', { allowNew: true });
+    if (dest.question) return ask(dest.question);
+    const into = groupOf(dest.value);
+    let sources = [...R.merge];
+    if (R.subject.value != null && R.subject.value !== 'new') sources.push(R.subject.value);
+    sources = [...new Set(sources)].filter((id) => id !== into?.id && st.gById.has(id));
+    if (!sources.length) return { reply: 'Which groups should I merge? Say it like “Merge Growth 2 into Growth”.' };
+    if (!into) {
+      if (!newName) return { reply: 'What should the merged group be called?' };
+      const ids = st.tabs.filter((t) => sources.includes(t.groupId)).map((t) => t.id);
+      return confirmOrApply(ctx, session, answers, sure, `Merge ${sources.map((id) => st.gById.get(id).title).join(', ')} into a new group, ${newName}?`, { targetId: null, targetName: newName, moveTabIds: ids, mergeIds: [] });
+    }
+    return confirmOrApply(ctx, session, answers, sure, `Merge ${sources.map((id) => st.gById.get(id).title || 'Untitled').join(', ')} into ${into.title}?`, { targetId: into.id, targetName: into.title, mergeIds: sources });
+  }
+
+  // move / take_out: which group, then which tabs
+  let target = null;
+  let targetName = null;
+  if (action === 'move') {
+    const dest = need('destination', 'Which group should they go into?', { allowNew: true });
+    if (dest.question) return ask(dest.question);
+    if (dest.missing) return { reply: 'Where should they go? Name a group, for example “… into Growth”.' };
+    target = groupOf(dest.value);
+    targetName = target ? target.title : newName;
+    if (!targetName) return { reply: 'What should the new group be called? Say it like “… into a new group called Research”.' };
+  }
+  let fromIds = null;
+  const subjOk = R.subject.value != null && R.subject.value !== 'new' && R.subject.value !== target?.id;
+  if (answers.subject) fromIds = [Number(answers.subject)];
+  else if (subjOk && R.subject.confidence >= ASK) fromIds = [R.subject.value];
+  else if (action === 'take_out') {
+    const subj = need('subject', 'Which group should they come out of?');
+    if (subj.question) return ask(subj.question);
+  }
+  const pool = st.tabs.filter((t) => ctx.aiAllowed(t) && (fromIds ? fromIds.includes(t.groupId) : action === 'take_out' ? t.groupId >= 0 : true) && (!target || t.groupId !== target.id));
+  if (!pool.length) return { reply: 'There are no tabs there I can move.' };
+  const reqs = buildMatchRequests(pool, { description: session.instruction, target: targetName || '', settings: ctx.settings });
+  const { results, errors } = await runAll(ctx.settings, reqs, { fetchImpl: ctx.fetch, retryDelay: ctx.jevRetryDelay });
+  const probs = parseNoulResponses(reqs, results);
+  if (!probs.size) return { reply: `Jev couldn't check your tabs just now${errors[0] ? ` (${errors[0].message})` : ''}.` };
+  const sureTabs = [...probs].filter(([, p]) => p >= SURE);
+  const unsure = [...probs].filter(([, p]) => p >= MAYBE && p < SURE);
+  if (!sureTabs.length && !unsure.length) return { reply: 'I couldn\'t find tabs that fit that.' };
+  const move = {
+    v: 1, instruction: session.instruction, what: session.instruction, targetName, targetId: target?.id ?? null,
+    targetCandidates: [], fromIds, via: 'jev',
+    sure: sureTabs.map(([id, p]) => [id, +p.toFixed(3)]), unsure: unsure.map(([id, p]) => [id, +p.toFixed(3)]),
+  };
+  const questions = buildQuestions(move, st);
+  move.questions = questions.map(({ id, kind, tabIds }) => ({ id, kind, tabIds: tabIds || [] }));
+  if (sure && !questions.length) return applyNow(ctx, planFrom(move, {}, st));
+  if (questions.length) return { session: move, questions };
+  return { session: move, preview: preview(move, {}, st) };
+}
+
+/** Sure → do it (Undo is there). Not quite sure → one Yes/No first. */
+async function confirmOrApply(ctx, session, answers, sure, text, plan) {
+  if (sure || answers.confirm === 'yes') return applyNow(ctx, plan);
+  if (answers.confirm === 'no') return { reply: 'OK, nothing changed. Try saying it another way.' };
+  return { session, questions: [{ id: 'confirm', kind: 'confirm', text, options: [{ value: 'yes', label: 'Yes, do it' }, { value: 'no', label: 'No' }] }] };
+}
+
 
 function buildQuestions(session, st) {
   const out = [];
@@ -199,13 +274,35 @@ function preview(session, answers, st) {
 }
 
 export async function askAnswer(ctx, { session, answers }) {
-  if (!session || session.v !== 1) return { reply: 'That question is out of date. Ask again.' };
+  if (!session || (session.v !== 1 && session.v !== 2)) return { reply: 'That question is out of date. Ask again.' };
   const st = await live(ctx);
   const a = answers && typeof answers === 'object' ? Object.fromEntries(Object.entries(answers).map(([k, v]) => [String(k), String(v)])) : {};
+  if (session.kind === 'route') {
+    const rs = sanitizeRoute(session);
+    if (!rs) return { reply: 'That question is out of date. Ask again.' };
+    return ctx.exclusive(() => continueRoute(ctx, rs, a, st));
+  }
   const clean = sanitizeSession(session);
   const pv = preview(clean, a, st);
   if (!pv.tabs.length && !pv.merging.length) return { reply: 'Nothing left to move.' };
   return { session: clean, preview: pv };
+}
+
+function sanitizeRoute(s) {
+  const r = s.route;
+  if (!r || typeof r !== 'object') return null;
+  const val = (v) => (v === 'new' ? 'new' : int(v));
+  const top = (xs) => (Array.isArray(xs) ? xs.slice(0, 5).map(([v, p]) => [val(v), Number(p) || 0]) : []);
+  const slot = (x) => ({ value: x ? val(x.value) : null, confidence: Number(x?.confidence) || 0, top: top(x?.top) });
+  return {
+    v: 2, kind: 'route', instruction: String(s.instruction || '').slice(0, 300),
+    route: {
+      action: { value: String(r.action?.value || 'none'), confidence: Number(r.action?.confidence) || 0, top: Array.isArray(r.action?.top) ? r.action.top.slice(0, 5).map(([k, p]) => [String(k), Number(p) || 0]) : [] },
+      destination: slot(r.destination), subject: slot(r.subject),
+      newName: { value: r.newName?.value ? String(r.newName.value).slice(0, 60) : null, confidence: Number(r.newName?.confidence) || 0 },
+      merge: ints(r.merge),
+    },
+  };
 }
 
 function sanitizeSession(s) {

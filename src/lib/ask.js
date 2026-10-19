@@ -1,134 +1,67 @@
-// Ask: move and merge tabs by saying so. Pure helpers (no Chrome): parse an instruction, resolve group
-// names, pick the tabs it means, and decide what to ask when that takes a guess.
+// Ask: move and merge tabs by saying so. Pure helpers (no Chrome).
 //
-// Jev answers typed questions and never writes text, so the parsing of the instruction is done here in
-// code; Jev only judges which tabs fit the description (see buildMatchRequests in jev.js).
-import { hostOf, registrableDomain } from './url.js';
+// Jev reads the request. Code lists the choices (your groups, a new group, the words you typed that
+// could be a name) and Jev picks among them in one call of typed questions (see buildRouteRequest in
+// jev.js). A second call judges which tabs a move means. Jev never writes text: a new group name is
+// always words copied from what you typed.
 import { tabTerms } from './goals.js';
 
 /** Jev noul thresholds: at or above SURE a tab moves; between MAYBE and SURE we ask. */
 export const SURE = 0.7;
 export const MAYBE = 0.35;
 export const MAX_QUESTIONS = 3;
+/** Routing: at or above ACT we go ahead; below ASK we ask which one you meant. */
+export const ACT = 0.85;
+export const ASK = 0.6;
 
-const clean = (s) => String(s || '').trim().replace(/^["'“‘]+|["'”’.!?]+$/g, '').trim();
-const groupName = (s) => clean(s).replace(/^(?:the|my|a|an|a new|new)\s+/i, '').replace(/\s+groups?$/i, '').trim();
-const FILLER = /^(?:all\s+(?:of\s+)?(?:the\s+|my\s+)?|the\s+|my\s+|these\s+|those\s+|any\s+|every\s+)/i;
-const TAB_WORDS = /\s+(?:tabs?|pages?|ones|windows?|sites?)$/i;
-const WHAT_STOP = new Set('a an and or the of for to in on my all any these those every tab tabs page pages ones open about with that are is related stuff things'.split(' '));
-
-/** "the LinkedIn tabs" → "linkedin" */
-export function cleanWhat(s) {
-  let w = clean(s);
-  for (let i = 0; i < 3; i++) w = w.replace(FILLER, '');
-  return w.replace(TAB_WORDS, '').trim();
-}
-
-/**
- * Parse one instruction. Returns one of:
- *   {kind:'merge', from:[names], into:name|null}
- *   {kind:'move', what, from:name|null, into:name|null}   into null = take out of the group
- *   {kind:'rename', group, to}
- *   {kind:'ungroup', group}
- *   {kind:'unknown'}
- */
-export function parseInstruction(text) {
-  const t = clean(text).replace(/\s+/g, ' ').replace(/^(?:please|can you|could you|pls)\s+/i, '');
-  let m;
-  if ((m = t.match(/^(?:merge|combine|join)\s+(.+?)\s+(?:into|in|to|onto)\s+(.+)$/i))) {
-    return { kind: 'merge', from: splitList(m[1]), into: groupName(m[2]) };
-  }
-  if ((m = t.match(/^(?:merge|combine|join)\s+(.+)$/i))) {
-    const parts = splitList(m[1].replace(/\s+(?:together|groups?)$/i, ''));
-    if (parts.length >= 2) return { kind: 'merge', from: parts, into: null };
-  }
-  if ((m = t.match(/^rename\s+(.+?)\s+(?:to|as|into)\s+(.+)$/i))) return { kind: 'rename', group: groupName(m[1]), to: clean(m[2]) };
-  if ((m = t.match(/^(?:ungroup|dissolve|break up|disband)\s+(.+)$/i))) return { kind: 'ungroup', group: groupName(m[1]) };
-  if ((m = t.match(/^(?:move|put|send|add|drop|place|stick|group|bring)\s+(.+?)\s+(?:into|in|to|under|onto|inside|as)\s+(?:a\s+new\s+group\s+(?:called|named)\s+)?(.+)$/i))) {
-    const { what, from } = splitFrom(m[1]);
-    return { kind: 'move', what, from, into: groupName(m[2]) };
-  }
-  if ((m = t.match(/^(?:take|pull|remove|get|move)\s+(.+?)\s+(?:out of|from)\s+(.+)$/i))) {
-    return { kind: 'move', what: m[1], from: groupName(m[2]), into: null };
-  }
-  return { kind: 'unknown' };
-}
-
-function splitList(s) {
-  return s.split(/\s*,\s*(?:and\s+)?|\s+and\s+|\s+with\s+|\s*&\s*/i).map(groupName).filter(Boolean);
-}
-function splitFrom(s) {
-  const m = s.match(/^(.+?)\s+(?:out of|from)\s+(.+)$/i);
-  return m ? { what: m[1], from: groupName(m[2]) } : { what: s, from: null };
-}
+/** What Ask can do. Keys are what code runs; descriptions are what Jev judges. */
+export const ACTIONS = {
+  move: 'Put some tabs into a group, an existing one or a new one',
+  take_out: 'Take some tabs out of a group so they are no longer in any group',
+  merge: 'Combine whole groups into one group',
+  rename: 'Give an existing group a different name',
+  ungroup: 'Dissolve a whole group; its tabs stay open',
+  none: 'Something else, or not about organizing tabs into groups',
+};
+export const ACTION_LABELS = {
+  move: 'Move tabs into a group', take_out: 'Take tabs out of a group', merge: 'Merge groups',
+  rename: 'Rename a group', ungroup: 'Ungroup a group', none: 'Something else',
+};
 
 const norm = (s) => String(s || '').toLowerCase().replace(/\s+/g, ' ').trim();
 /** "Growth 2" → "growth" (Chrome and Tab Land number repeated names). */
 export const baseName = (s) => norm(s).replace(/\s*(?:\(\d+\)|\d+)$/, '').trim();
 
-/**
- * Find the group a name means. groups: [{id, title, count, windowId}].
- * → {match: group|null, candidates: [groups]} — several candidates means ask which.
- */
-export function resolveGroup(name, groups) {
-  const n = norm(name);
-  if (!n) return { match: null, candidates: [] };
-  const exact = groups.filter((g) => norm(g.title) === n);
-  if (exact.length === 1) return { match: exact[0], candidates: exact };
-  if (exact.length > 1) return { match: null, candidates: exact };
-  const loose = groups.filter((g) => {
-    const t = norm(g.title);
-    return t && (t.startsWith(n) || n.startsWith(t) || baseName(t) === baseName(n));
-  });
-  if (loose.length === 1) return { match: loose[0], candidates: loose };
-  if (loose.length > 1) return { match: null, candidates: loose };
-  return { match: null, candidates: [] };
-}
-
-/** Site names a description can mean exactly: "linkedin", "posthog", "github.com". */
-function siteLabels(url) {
-  const host = hostOf(url);
-  const reg = registrableDomain(host);
-  return new Set([host, reg, reg.split('.')[0], ...host.split('.')].filter((x) => x && x.length > 2));
-}
+const NAME_STOP = new Set('a an and or the of for to in into on out from my all any these those every tab tabs page pages group groups please can could you hyou u it them this that move put take merge rename call ungroup combine with as called named be should'.split(' '));
 
 /**
- * Pick the tabs a description means when no guessing is needed:
- *   - empty / "all" / "everything" → the whole pool
- *   - a group's name → that group's tabs
- *   - a site name ("LinkedIn tabs") → the pool's tabs on that site
- * → {tabIds, how} or null when it takes judgment.
+ * Every run of up to five words in the request that could be a new group name, copied exactly.
+ * Quoted text comes first. Runs that start or end on a filler word are skipped.
  */
-export function exactSelection(what, pool, groups = []) {
-  const w = cleanWhat(what);
-  const lw = norm(w);
-  if (!lw || /^(?:everything|all|it|them|everything else)$/.test(lw)) return { tabIds: pool.map((t) => t.id), how: 'all' };
-  const g = resolveGroup(w, groups);
-  if (g.match) {
-    const ids = pool.filter((t) => t.groupId === g.match.id).map((t) => t.id);
-    if (ids.length) return { tabIds: ids, how: 'group', group: g.match };
+export function nameSpans(text, { max = 60 } = {}) {
+  const t = String(text || '').slice(0, 300);
+  const out = [];
+  const seen = new Set();
+  const add = (x) => { const v = x.trim().replace(/^["'“‘]|["'”’.!?,]$/g, '').trim(); const k = v.toLowerCase(); if (v && v.length <= 60 && !seen.has(k)) { seen.add(k); out.push(v); } };
+  for (const m of t.matchAll(/["“']([^"”']{1,60})["”']/g)) add(m[1]);
+  const words = t.split(/\s+/).filter(Boolean).map((w) => w.replace(/[.!?,;:]+$/, ''));
+  for (let n = 5; n >= 1; n--) {
+    for (let i = 0; i + n <= words.length; i++) {
+      const run = words.slice(i, i + n);
+      if (NAME_STOP.has(run[0].toLowerCase()) || NAME_STOP.has(run[n - 1].toLowerCase())) continue;
+      add(run.join(' '));
+    }
   }
-  const words = lw.split(/[\s,]+/).filter((x) => x && !WHAT_STOP.has(x));
-  if (words.length >= 1 && words.length <= 2) {
-    const hit = pool.filter((t) => { const labels = siteLabels(t.url); return words.every((x) => labels.has(x) || labels.has(x.replace(/\s+/g, ''))); });
-    if (hit.length) return { tabIds: hit.map((t) => t.id), how: 'site' };
-  }
-  return null;
+  return out.slice(0, max);
 }
 
-/** Without Jev: share of the description's words found in each tab's title and path. → Map<id, p> */
-export function localMatch(what, pool) {
-  const words = norm(cleanWhat(what)).split(/[^a-z0-9]+/).filter((x) => x.length > 1 && !WHAT_STOP.has(x));
-  const out = new Map();
-  if (!words.length) return out;
-  for (const t of pool) {
-    const hay = `${norm(t.title)} ${hostOf(t.url)} ${norm(decodeSafe(t.url))}`;
-    const hits = words.filter((x) => hay.includes(x) || (x.length > 4 && hay.includes(x.replace(/s$/, '')))).length;
-    out.set(t.id, hits / words.length);
-  }
-  return out;
+/** A choice answer → {key, confidence, top:[[key, p]…]} (top = the likeliest few, for asking back). */
+export function readChoice(a, { keep = 3, floor = 0.12 } = {}) {
+  if (!a || !a.choice) return null;
+  const probs = a.probabilities && typeof a.probabilities === 'object' ? Object.entries(a.probabilities) : [[a.choice, a.confidence ?? 1]];
+  const top = probs.filter(([, p]) => typeof p === 'number' && p >= floor).sort((x, y) => y[1] - x[1]).slice(0, keep);
+  return { key: a.choice, confidence: typeof a.confidence === 'number' ? a.confidence : (top[0]?.[1] ?? 0), top: top.length ? top : [[a.choice, 1]] };
 }
-function decodeSafe(u) { try { return decodeURIComponent(u); } catch { return u; } }
 
 /**
  * Turn borderline tabs into at most MAX_QUESTIONS yes/no questions, clustered by a shared title word so

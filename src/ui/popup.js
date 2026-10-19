@@ -407,7 +407,8 @@ function done(d) {
 
 function askQuestions(session, questions) {
   const answers = {};
-  say(session.sure.length ? `${session.sure.length} tab${session.sure.length === 1 ? '' : 's'} clearly fit. A few I'm not sure about:` : 'I need to check a few things first:');
+  const sure = session.sure?.length || 0;
+  if (session.kind !== 'rename') say(sure ? `${sure} tab${sure === 1 ? '' : 's'} clearly fit. A few I'm not sure about:` : 'I need to check a few things first:');
   const cards = questions.map((qq, i) => {
     const c = el('div', 'card' + (i === 0 ? ' active' : ''));
     c.append(el('div', 'q', qq.text));

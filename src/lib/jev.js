@@ -308,6 +308,53 @@ export function buildCloseReviewRequests(candidates, { settings, chunk = 15 }) {
 }
 
 /**
+ * Ask mode, step 1: read the request. One call, every question asked together (speculative fan-out):
+ * which action, which group the tabs end up in, which group is acted on, which of the typed words
+ * are a new name, and which groups are merged in. Code then uses only the answers the action needs.
+ * groups: [{id, title, count, examples:[titles]}]; spans: candidate names copied from the request.
+ */
+export function buildRouteRequest(instruction, { groups, spans, actions, settings, maxGroups = 200 }) {
+  const shown = groups.slice(0, Math.min(maxGroups, MAX_CHOICE_OPTIONS - 2));
+  const gKey = new Map(shown.map((g, i) => [`g${i + 1}`, g.id]));
+  const nEx = shown.length > 60 ? 1 : 3;
+  const groupLine = (g) => `"${clip(g.title || 'Untitled', 50)}" (${g.count} tab${g.count === 1 ? '' : 's'})${settings.sendTitles && g.examples?.length ? `: ${g.examples.slice(0, nEx).map((t) => `"${clip(t, 40)}"`).join(', ')}` : ''}`;
+  const groupCriteria = Object.fromEntries(shown.map((g, i) => [`g${i + 1}`, groupLine(g)]));
+  const state = {
+    request: clip(instruction, 300),
+    note: 'The user typed this to organize their browser tabs. It may have typos or loose wording ("linked in" for LinkedIn).',
+    groups: shown.map((g, i) => `g${i + 1}: ${groupLine(g)}`),
+  };
+  const questions = {
+    action: { type: 'choice', instructions: 'What does the user want done?', criteria: { ...actions } },
+    destination: {
+      type: 'choice',
+      instructions: 'If tabs are being moved into a group, or groups merged together, which group do they end up in?',
+      criteria: { ...groupCriteria, new: 'A new group that does not exist yet', none: 'No group to end up in (taking tabs out, renaming, dissolving)' },
+    },
+    subject: {
+      type: 'choice',
+      instructions: 'Which existing group is the request acting on: the group tabs are taken out of, the group being renamed, or the group being dissolved?',
+      criteria: { ...groupCriteria, none: 'No existing group is acted on this way' },
+    },
+  };
+  const spanKey = new Map();
+  if (spans.length) {
+    const criteria = {};
+    spans.forEach((x, i) => { criteria[`s${i + 1}`] = `"${clip(x, 60)}"`; spanKey.set(`s${i + 1}`, x); });
+    criteria.none = 'No new name is given';
+    questions.new_name = { type: 'choice', instructions: 'Which exact words in the request are the new name for a group (a group being created or renamed)?', criteria };
+  }
+  const mergeKey = new Map();
+  if (shown.length <= 120) {
+    shown.forEach((g, i) => {
+      questions[`merge_${i + 1}`] = { type: 'noul', instructions: `Is group g${i + 1} ("${clip(g.title || 'Untitled', 50)}") one of the groups the user wants merged into another group?` };
+      mergeKey.set(`merge_${i + 1}`, g.id);
+    });
+  }
+  return { body: { model: settings.jevModel || 'jev-latest', state, questions }, gKey, spanKey, mergeKey };
+}
+
+/**
  * Ask mode: does each tab fit what the user described ("the dashboards and funnel reports")?
  * One noul per tab (docs: one yes/no judgment per question), all tabs in the state for context.
  * Batched under MAX_REQUEST_CHARS; parse with parseNoulResponses.
@@ -316,7 +363,7 @@ export function buildMatchRequests(tabs, { description, target = '', settings, c
   const shown = tabs.slice(0, 200);
   const lines = shown.map((t, i) => `[${i + 1}] ${describeTab(t, settings)}`);
   const what = clip(description, 200);
-  const state = `The user said which of their open browser tabs to move${target ? ` into the group "${clip(target, 60)}"` : ''}: "${what}".\n\nOpen tabs, each line [n] "title" — site/path:\n${lines.join('\n')}`;
+  const state = `The user asked to organize their tabs${target ? ` (into the group "${clip(target, 60)}")` : ''}: "${what}". It may have typos or loose wording.\n\nOpen tabs, each line [n] "title" — site/path:\n${lines.join('\n')}`;
   const qSize = 420 + what.length;
   const fit = Math.max(1, Math.min(chunk, Math.floor((maxChars - state.length - 200) / qSize)));
   const requests = [];
@@ -328,7 +375,7 @@ export function buildMatchRequests(tabs, { description, target = '', settings, c
       idMap[`tab_${n}`] = t.id;
       questions[`tab_${n}`] = {
         type: 'noul',
-        instructions: `Is tab [${n}] one of the tabs the user means by "${what}"?`,
+        instructions: `Is tab [${n}] one of the tabs this request is about moving: "${what}"?`,
         criteria: { true: 'the page is what they described, or clearly part of it', false: 'the page is about something else, even if it is on a similar site' },
       };
     });

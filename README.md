@@ -42,15 +42,16 @@ If you add a Jev API key (see below), Jev double-checks each group, takes out ta
 Prefer the old style? In Settings, switch from **By goal** to **By use case**. That groups tabs by the type of work instead (Engineering, Hiring, Growth, and so on).
 
 ### Move and merge tabs by saying so
-Open the popup and switch to **Ask** (or type `>` in the search box). Then say what you want in plain English:
+Open the popup and switch to **Ask** (or type `>` in the search box). Then say what you want in your own words. Typos and loose wording are fine:
+- "Can you move linked in out of Growth"
 - "Merge Growth 2 into Growth"
-- "Move the LinkedIn tabs out of Hiring into Social"
-- "Move the dashboards and funnel reports into Growth"
-- "Rename Growth 2 to Paid growth" or "Ungroup Research"
+- "Put the dashboards and funnel reports in a new group called Metrics"
+- "Growth 2 should really be Paid growth"
+- "Ungroup Research"
 
-When the request is clear, like naming groups that exist or a site such as LinkedIn, Tab Land just does it. You get an **Undo** button right away.
+Ask needs a Jev API key. Jev reads your request, along with your group names and a few tab titles from each group, and answers a set of questions about it: what you want done, which group, and what the new name is. A new name is always copied from the words you typed. When tabs have to move, Jev also checks each tab against your request.
 
-When it has to guess which tabs you mean, it asks Jev about each tab. Then it asks you about the close calls ("Are the referral tabs part of Growth too?") and shows the tabs it will move. Nothing moves until you say so. It also asks which group you mean when two have the same name, and can merge them.
+When Jev is sure, the change happens right away and you get an **Undo** button. When it's fairly sure, it asks "Rename Hiring to Recruiting?" first. When it's unsure, it asks you to pick, for example which group you meant, or whether a close-call tab belongs. Moves it had to guess at show you the tabs first, and nothing moves until you say so. If you rename a group to a name another group already has, it offers to merge the two.
 
 Ask also lists groups that look like they should be one, with a one-tap **Merge**. Nothing you say is saved. Only the last change is kept, so you can undo it.
 
@@ -100,7 +101,7 @@ Jev is an AI model from TypeSafe AI. It doesn't write text. It answers questions
 ## Privacy
 
 - Everything Tab Land learns stays in your browser. Nothing is synced or uploaded.
-- When you use Ask with a description, Jev also sees what you typed.
+- When you use Ask, Jev also sees what you typed and the names of your groups.
 - Jev only sees a tab's title and the site and path of its address. Settings can hide either one. The rest of the address (the part after `?` or `#`) and what's on the page are never sent.
 - In Settings, list sites Jev should never see, such as a health records system. Those tabs are never sent and never read.
 - You can also list sites Tab Land should never close or move.

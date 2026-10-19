@@ -43,8 +43,27 @@ const jev = http.createServer((req, res) => {
   req.on('end', () => {
     const b = JSON.parse(body);
     jevCalls.push(b);
-    const lines = b.state.split('\n');
     const answers = {};
+    if (b.state && typeof b.state === 'object' && b.state.request) {
+      // Ask routing: a tiny reader for the sentences the e2e steps type.
+      const text = b.state.request;
+      const names = Object.fromEntries(b.state.groups.map((l) => { const m = l.match(/^(g\d+): "([^"]*)"/); return [m[2].toLowerCase(), m[1]]; }));
+      const g = (n) => names[(n || '').trim().toLowerCase()] || 'none';
+      let m;
+      const route = { action: 'none', destination: 'none', subject: 'none', name: null, merge: [], conf: 0.95 };
+      if ((m = text.match(/^merge (.+) into (.+)$/i))) Object.assign(route, { action: 'merge', destination: g(m[2]), merge: [m[1].toLowerCase()] });
+      else if ((m = text.match(/^rename (.+) to (.+)$/i))) Object.assign(route, { action: 'rename', subject: g(m[1]), name: m[2] });
+      else if ((m = text.match(/^move .+ into (.+)$/i))) Object.assign(route, { action: 'move', destination: g(m[1]) === 'none' ? 'new' : g(m[1]), name: m[1], conf: 0.8 });
+      for (const [q, spec] of Object.entries(b.questions)) {
+        if (q === 'action') answers[q] = { choice: route.action, confidence: route.conf };
+        else if (q === 'destination' || q === 'subject') answers[q] = { choice: route[q], confidence: route.conf };
+        else if (q === 'new_name') answers[q] = { choice: Object.keys(spec.criteria).find((k) => spec.criteria[k] === `"${route.name}"`) || 'none', confidence: route.conf };
+        else if (q.startsWith('merge_')) answers[q] = { noul: route.merge.some((n) => spec.instructions.toLowerCase().includes(`("${n}")`)) ? 0.9 : 0.05 };
+      }
+      res.writeHead(200, { ...cors, 'content-type': 'application/json' });
+      return res.end(JSON.stringify({ model: 'jev-1.13.0', answers }));
+    }
+    const lines = b.state.split('\n');
     for (const [q, spec] of Object.entries(b.questions)) {
       if (spec.type === 'choice' && q === 'name') {
         const choice = Object.keys(spec.criteria).find((k) => spec.criteria[k].startsWith('Reading:')) || Object.keys(spec.criteria)[0];
@@ -135,7 +154,7 @@ try {
     assert.ok(jevCalls.some((b) => Object.values(b.questions).some((q) => q.type === 'noul')));
   });
   await step('nothing sent to Jev contains query strings', async () => {
-    assert.ok(jevCalls.every((b) => !b.state.includes('utm_source')));
+    assert.ok(jevCalls.every((b) => !JSON.stringify(b.state).includes('utm_source')));
   });
 
   await ui.reload();
@@ -324,6 +343,11 @@ try {
     await ui.waitForFunction(() => [...document.querySelectorAll('.bot')].some((b) => b.textContent.startsWith('Undone')));
     const after = (await sw.evaluate(() => chrome.tabGroups.query({}))).map((g) => g.title).sort();
     assert.deepEqual(after, ['Growth', 'Growth 2']);
+    await ui.fill('#askInput', 'Rename Growth 2 to Paid growth');
+    await ui.press('#askInput', 'Enter');
+    await ui.waitForFunction(() => [...document.querySelectorAll('.bot')].some((b) => b.textContent.includes('Renamed Growth 2 to Paid growth')));
+    const renamed = (await sw.evaluate(() => chrome.tabGroups.query({}))).map((g) => g.title).sort();
+    assert.deepEqual(renamed, ['Growth', 'Paid growth']);
   });
 
   await step('Ask with a description shows the tabs to check before moving them', async () => {
