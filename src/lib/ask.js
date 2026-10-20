@@ -30,7 +30,7 @@ export const ACTION_LABELS = {
 
 const norm = (s) => String(s || '').toLowerCase().replace(/\s+/g, ' ').trim();
 /** "Growth 2" → "growth" (Chrome and Tab Land number repeated names). */
-export const baseName = (s) => norm(s).replace(/\s*(?:\(\d+\)|\d+)$/, '').trim();
+export const baseName = (s) => norm(s).replace(/\s+(?:\(\d{1,2}\)|\d{1,2})$/, '').trim(); // "Q4" and "ENG-482" keep their numbers
 
 const NAME_STOP = new Set('a an and or the of for to in into on out from my all any these those every tab tabs page pages group groups please can could you hyou u it them this that move put take merge rename call ungroup combine with as called named be should'.split(' '));
 

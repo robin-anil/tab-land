@@ -43,7 +43,7 @@ export async function harness({ jev = defaultJev, settings = {}, start = Date.UT
     console: { warn: (m) => logs.push(m) },
   });
   app.ctx.jevRetryDelay = 1;
-  await fake.chrome.storage.local.set({ settings: { jevApiKey: 'test-key', staleMinutes: 30, ...settings } });
+  await fake.chrome.storage.local.set({ settings: { jevApiKey: 'test-key', staleMinutes: 30, minGroupSize: 2, ...settings } });
   app.attach();
   await app.ctx.ready();
   const send = (msg, sender) => fake.chrome.runtime.sendMessage(msg, sender);

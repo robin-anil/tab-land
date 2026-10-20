@@ -50,6 +50,7 @@ process.stdout.write('\n\n');
 const pct = (x) => (x == null ? '   -  ' : `${(x * 100).toFixed(0).padStart(4)}%`);
 const row = (label, x) => console.log(`${label.padEnd(26)} strict ${String(x.strict).padEnd(5)} attach ${String(x.attach).padEnd(5)} loose ${String(x.loose).padEnd(5)} | grouped ${pct(x.coverage)} (${x.grouped}/${x.tabs}) in ${String(x.groups).padStart(2)} groups, largest ${String(x.largest).padStart(2)} | Jev agrees ${pct(x.agreement)} | missed ${x.missed ?? '-'} | score ${x.score}`);
 row('One strict pass', r.strictOnly);
+row('Groups of 2+ (old)', r.smallAllowed);
 row('Current settings', r.current);
 row('Best', r.best);
 console.log('\nTop 5:');

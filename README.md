@@ -35,6 +35,8 @@ Being on the same website is **not** a clue. Two GitHub tabs for two different p
 
 If you add a Jev API key (see below), Jev double-checks each group, takes out tabs that don't fit, and names groups when the tabs share no words.
 
+**Fewer, fuller groups.** A group needs at least 4 tabs (you can change this in Settings). A smaller cluster joins the goal it fits best, or its tabs stay ungrouped. Two goals that end up with the same name become one group, so you won't see "Growth" and "Growth 2". Older duplicates like that are folded back into one the next time Tab Land groups.
+
 **Grouping again** only adds new tabs to the groups Tab Land already made. It keeps their names, and it never touches groups you made yourself.
 
 **Regroup everything** starts over. Use it when you switch grouping styles. It's in the popup, in Settings, and on <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>G</kbd>. Tab Land saves your current groups first, so **Undo regroup** can put them back.

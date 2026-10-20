@@ -14,6 +14,7 @@ import { runAll, buildGroupingRequests, parseGroupingResponses, buildGoalRequest
 import { snapshot } from './context.js';
 import { pageTextFor } from './pagetext.js';
 import { withRetry, isMissingTabError } from './util.js';
+import { baseName } from '../lib/ask.js';
 
 const GOAL_KEEP_P = 0.45;   // Jev must think it's at least this likely the tabs serve one goal
 const MEMBER_KEEP_P = 0.3;  // below this a tab is pulled out of the goal
@@ -24,6 +25,7 @@ export async function groupTabs(ctx) {
   const { chrome } = ctx;
   const s = ctx.settings;
   const now = ctx.now();
+  await mergeDuplicateGroups(ctx);
   const all = (await snapshot(ctx)).filter((t) => !t.url.startsWith(ctx.ownPrefix()));
   const groups = await chrome.tabGroups.query({});
   const titleById = new Map(groups.map((g) => [g.id, g.title || '']));
@@ -46,7 +48,7 @@ export async function groupTabs(ctx) {
     const pageText = await pageTextFor(ctx, candidates).catch((e) => { ctx.log(e, 'pageText'); return new Map(); });
     const graph = goalGraph(candidates, { edges, tabPairs: ctx.state.tabPairs, now, halfLifeMs: ctx.hl(), pageText });
     // Iterative: strict clusters, then attach loose tabs to the nearest goal, then looser clusters.
-    goals = iterativeGoals(candidates.map((t) => t.id), graph, { strict: s.goalThreshold }).map(({ ids, pass }) => /** @type {any} */ ({
+    goals = iterativeGoals(candidates.map((t) => t.id), graph, { strict: s.goalThreshold, minSize: s.minGroupSize }).map(({ ids, pass }) => /** @type {any} */ ({
       ids, pass,
       name: stableName(ids, byId, titleById, managed) || nameGoal(ids, graph.docs, graph.idf),
       cohesion: cohesion(ids, graph.w),
@@ -69,10 +71,10 @@ export async function groupTabs(ctx) {
       });
       if (answers.some(Boolean)) via = 'jev';
       else if (errs.length) errors.push(errs[0].message);
-      goals = goals.filter((g) => !g.rejected && g.ids.length >= 2);
+      goals = goals.filter((g) => !g.rejected && g.ids.length >= s.minGroupSize);
     }
     for (const g of goals) g.name ||= fallbackGoalName(g.ids.map((id) => byId.get(id)));
-    goals = dedupeNames(goals);
+    goals = mergeSameNames(goals);
   }
 
   // ---- leftovers (or everything, in use-case mode) ----
@@ -99,7 +101,7 @@ export async function groupTabs(ctx) {
   const plan = planGroups(rest.filter((t) => !inGoal.has(t.id)), {
     jev, learned: ctx.state.learned, edges, pairs: ctx.state.pairs, now, halfLifeMs: ctx.hl(),
     minChoiceConfidence: s.minChoiceConfidence, useCases: s.useCases, existingColors,
-    siteSignals: s.groupingMode !== 'goals', minSize: 2,
+    siteSignals: s.groupingMode !== 'goals', minSize: s.minGroupSize,
   });
 
   const planned = [];
@@ -114,7 +116,7 @@ export async function groupTabs(ctx) {
   const ucAssign = new Map([...plan.assign].filter(([, a]) => useCaseNames.has(a.name.toLowerCase())));
   ctx.state.useCaseStats = recordAssignments(ctx.state.useCaseStats, ucAssign, (id) => siteKey(byId.get(id)?.url || ''), now);
 
-  const applied = await applyGroups(ctx, planned, byId, groups);
+  const applied = await applyGroups(ctx, planned, byId, groups, { minSize: s.minGroupSize });
   for (const g of planned) {
     if (!ctx.state.managedGroups.some((n) => n.toLowerCase() === g.name.toLowerCase())) ctx.state.managedGroups.push(g.name);
     if (g.kind === 'useCase') for (const id of g.tabIds) if (byId.has(id)) ctx.state.learned[siteKey(byId.get(id).url)] = { name: g.name, t: now };
@@ -206,19 +208,61 @@ function fallbackGoalName(tabs) {
   return (words || 'Goal').slice(0, 24);
 }
 
-function dedupeNames(goals) {
-  const seen = new Map();
+/**
+ * Two goals with the same name are one group, not "Growth" and "Growth 2". Jev often names goals
+ * from a short list of kinds of work, so several clusters can come back as "Growth": they merge.
+ */
+export function mergeSameNames(goals) {
+  const byName = new Map();
+  const out = [];
   for (const g of goals) {
-    const k = g.name.toLowerCase();
-    const n = (seen.get(k) || 0) + 1;
-    seen.set(k, n);
-    if (n > 1) g.name = `${g.name} ${n}`;
+    const k = baseName(g.name);
+    const first = byName.get(k);
+    if (first) { first.ids.push(...g.ids.filter((id) => !first.ids.includes(id))); continue; }
+    byName.set(k, g);
+    out.push(g);
   }
-  return goals;
+  return out;
+}
+
+/**
+ * Tidy up after older versions: Tab Land's own groups in one window whose names differ only by a
+ * number ("Growth", "Growth 2") become one group. Your own groups are never touched.
+ */
+export async function mergeDuplicateGroups(ctx) {
+  const { chrome } = ctx;
+  const managed = new Set(ctx.state.managedGroups.map((n) => n.toLowerCase()));
+  const groups = (await chrome.tabGroups.query({})).filter((g) => g.title && managed.has(g.title.toLowerCase()));
+  const tabs = await chrome.tabs.query({});
+  const sets = new Map();
+  for (const g of groups) {
+    const k = `${g.windowId}|${baseName(g.title)}`;
+    if (!sets.has(k)) sets.set(k, []);
+    sets.get(k).push({ ...g, count: tabs.filter((t) => t.groupId === g.id).length });
+  }
+  let merged = 0;
+  for (const set of sets.values()) {
+    if (set.length < 2) continue;
+    const base = baseName(set[0].title);
+    const keep = set.find((g) => g.title.toLowerCase() === base) || [...set].sort((a, b) => b.count - a.count)[0];
+    for (const g of set) {
+      if (g.id === keep.id) continue;
+      const ids = tabs.filter((t) => t.groupId === g.id).map((t) => t.id);
+      if (!ids.length) continue;
+      try { await withRetry(() => chrome.tabs.group({ groupId: keep.id, tabIds: ids }), { timers: ctx.timers }); merged++; }
+      catch (e) { if (!isMissingTabError(e)) throw e; }
+    }
+    const pretty = keep.title.replace(/\s+(?:\(\d{1,2}\)|\d{1,2})$/, '');
+    if (pretty !== keep.title) {
+      await chrome.tabGroups.update(keep.id, { title: pretty });
+      if (!ctx.state.managedGroups.some((n) => n.toLowerCase() === pretty.toLowerCase())) ctx.state.managedGroups.push(pretty);
+    }
+  }
+  return merged;
 }
 
 /** Create or extend groups window by window, re-checking that every tab still exists. */
-export async function applyGroups(ctx, planned, byId, groups) {
+export async function applyGroups(ctx, planned, byId, groups, { minSize = 2 } = {}) {
   const { chrome } = ctx;
   const live = new Map((await chrome.tabs.query({})).map((t) => [t.id, t]));
   const applied = [];
@@ -232,7 +276,7 @@ export async function applyGroups(ctx, planned, byId, groups) {
     }
     for (const [windowId, list] of perWindow) {
       const existing = groups.find((x) => x.windowId === windowId && (x.title || '').toLowerCase() === g.name.toLowerCase());
-      if (!existing && list.length < 2) continue;
+      if (!existing && list.length < minSize) continue; // no new tiny groups; an existing one may grow by one
       const ids = list.filter((t) => t.groupId !== existing?.id).map((t) => t.id);
       try {
         if (ids.length && existing) {

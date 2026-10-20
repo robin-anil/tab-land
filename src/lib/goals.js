@@ -229,7 +229,7 @@ export function attachScore(id, goalIds, graph, profile) {
   return 0.4 * mean + 0.4 * max + 0.6 * fit + ent;
 }
 
-export const ITERATIVE = { strict: 0.3, loose: 0.18, attach: 0.15, maxPasses: 4, maxSize: 15 };
+export const ITERATIVE = { strict: 0.3, loose: 0.18, attach: 0.15, maxPasses: 4, maxSize: 15, minSize: 2, merge: 0.12, mergedMax: 24 };
 
 /**
  * @returns {Array<{ids:number[], pass:number}>}  pass 1 = strict cluster, 2 = attached, 3 = loose cluster
@@ -271,5 +271,30 @@ export function iterativeGoals(ids, graph, opts = {}) {
     c.forEach((id) => taken.add(id));
   }
   attachRound();
-  return goals.sort((a, b) => b.ids.length - a.ids.length);
+  return consolidate(goals, graph, o).sort((a, b) => b.ids.length - a.ids.length);
+}
+
+/**
+ * Fewer, fuller groups: a goal smaller than minSize merges into the goal its tabs fit best (if they fit
+ * well enough, by the same evidence attaching uses); otherwise it is dropped and its tabs stay loose for
+ * the leftover step. Smallest goals go first, so two small halves of one job can meet and both survive.
+ */
+export function consolidate(goals, graph, o = ITERATIVE) {
+  const min = o.minSize ?? 2;
+  if (min <= 2) return goals;
+  const live = goals.map((g) => ({ ...g, ids: [...g.ids] }));
+  for (;;) {
+    const small = live.filter((g) => g.ids.length < min).sort((a, b) => a.ids.length - b.ids.length)[0];
+    if (!small) break;
+    let best = null;
+    for (const g of live) {
+      if (g === small || g.ids.length + small.ids.length > (o.mergedMax ?? 24)) continue;
+      const profile = centroid(g.ids, graph.docs);
+      const s = small.ids.reduce((a, id) => a + attachScore(id, g.ids, graph, profile), 0) / small.ids.length;
+      if (s >= (o.merge ?? 0.12) && (!best || s > best.s)) best = { g, s };
+    }
+    live.splice(live.indexOf(small), 1);
+    if (best) { best.g.ids.push(...small.ids); best.g.merged = (best.g.merged || 0) + 1; }
+  }
+  return live;
 }

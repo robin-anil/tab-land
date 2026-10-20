@@ -113,9 +113,10 @@ export async function tune(exp, { grid = QUICK_GRID, apiKey = null, fetchImpl = 
   const prep = prepare(exp);
   const j = apiKey ? judge(prep, { apiKey, fetchImpl, retryDelay, cache }) : null;
   const strictOnly = await evaluate(prep, { strict: ITERATIVE.strict, attach: 9, loose: 9 }, j);
-  const current = await evaluate(prep, { ...ITERATIVE, strict: prep.settings.goalThreshold }, j);
+  const current = await evaluate(prep, { ...ITERATIVE, strict: prep.settings.goalThreshold, minSize: prep.settings.minGroupSize }, j);
+  const loose2 = await evaluate(prep, { ...ITERATIVE, strict: prep.settings.goalThreshold, minSize: 2 }, j);
   const results = [];
   for (const [i, cfg] of grid.entries()) { results.push(await evaluate(prep, cfg, j)); onProgress(i + 1, grid.length); }
   results.sort((a, b) => b.score - a.score);
-  return { tabs: prep.tabs.length, strictOnly, current, best: results[0], results, jev: j ? j.stats() : null };
+  return { tabs: prep.tabs.length, strictOnly, current, smallAllowed: loose2, best: results[0], results, jev: j ? j.stats() : null };
 }

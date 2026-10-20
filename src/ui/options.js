@@ -4,7 +4,7 @@ import { DEFAULTS, DEFAULT_USE_CASES, GROUP_COLORS, loadSettings, saveSettings }
 const $ = (id) => document.getElementById(id);
 const BOOL = ['closeVariants', 'autoCloseDuplicates', 'readPageText', 'autoTuneUseCases', 'useJevForGrouping', 'useJevForClosing', 'sendTitles', 'sendPaths', 'crossWindowDedupe', 'respectManualGroups',
   'reorderGroupsAsBlocks', 'autoOrderGroups', 'linkInference', 'autoEnabled', 'autoDedupe', 'autoCloseChildren', 'autoGroup', 'autoReorder'];
-const NUM = ['dupIdleMinutes', 'staleMinutes', 'transientMinutes', 'halfLifeDays', 'autoIntervalMin', 'autoCloseConfidence', 'minChoiceConfidence'];
+const NUM = ['minGroupSize', 'dupIdleMinutes', 'staleMinutes', 'transientMinutes', 'halfLifeDays', 'autoIntervalMin', 'autoCloseConfidence', 'minChoiceConfidence'];
 const LISTS = ['aiExcludedDomains', 'protectedDomains'];
 const SWATCH = { grey: '#8a8f98', blue: '#3b82f6', red: '#ef4444', yellow: '#eab308', green: '#22c55e', pink: '#ec4899', purple: '#a855f7', cyan: '#06b6d4', orange: '#f97316' };
 

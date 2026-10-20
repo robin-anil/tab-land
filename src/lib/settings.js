@@ -26,6 +26,7 @@ export const DEFAULTS = {
   useJevForGrouping: true,
   groupingMode: 'goals',   // 'goals' (the job a set of tabs serves) or 'useCases' (the kind of work)
   goalThreshold: 0.3,
+  minGroupSize: 4,           // no groups smaller than this: small clusters merge into a bigger goal or stay loose
   readPageText: false,     // read page descriptions/headings locally to improve goals (needs page access)
   useJevForClosing: true,
   useCases: DEFAULT_USE_CASES,
@@ -95,6 +96,7 @@ export function sanitizeSettings(raw) {
   out.autoIntervalMin = Math.max(5, out.autoIntervalMin);
   out.jevTimeoutMs = Math.min(60000, Math.max(2000, out.jevTimeoutMs));
   if (!['goals', 'useCases'].includes(out.groupingMode)) out.groupingMode = DEFAULTS.groupingMode;
+  out.minGroupSize = Math.max(2, Math.min(10, Math.round(Number(out.minGroupSize)) || DEFAULTS.minGroupSize));
   if (!['recent', 'usage'].includes(out.groupOrder)) out.groupOrder = DEFAULTS.groupOrder;
   out.goalThreshold = Math.min(0.9, Math.max(0.1, out.goalThreshold));
   out.dupIdleMinutes = Math.min(1440, Math.max(1, out.dupIdleMinutes));

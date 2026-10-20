@@ -113,7 +113,7 @@ try {
   // Configure: mock Jev, child tabs idle immediately.
   await sw.evaluate(async () => {
     const { settings } = await chrome.storage.local.get('settings');
-    await chrome.storage.local.set({ settings: { ...(settings || {}), jevApiKey: 'test-key', jevBaseUrl: 'http://127.0.0.1:8772', staleMinutes: 0, transientMinutes: 0, groupingMode: 'useCases' } });
+    await chrome.storage.local.set({ settings: { ...(settings || {}), jevApiKey: 'test-key', jevBaseUrl: 'http://127.0.0.1:8772', staleMinutes: 0, transientMinutes: 0, groupingMode: 'useCases', minGroupSize: 2 } }); // a dozen-tab scene: small groups on purpose
   });
   for (const p of ctx.pages()) if (p.url().includes('options.html')) await p.close();
 

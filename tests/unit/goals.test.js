@@ -313,3 +313,41 @@ describe('regroup everything (one-time rebuild)', () => {
     expect(titleOf(h, ids.issue)).toBe('ENG-482 Billing Retry');
   });
 });
+
+describe('fewer, fuller groups', () => {
+  test('consolidate merges a small goal into the one it fits, and drops one that fits nowhere', async () => {
+    const { consolidate } = await import('../../src/lib/goals.js');
+    const docs = new Map([1, 2, 3, 4, 5, 6, 7].map((id) => [id, { terms: new Map([[id <= 6 ? 'billing' : 'garden', 1]]), entities: new Set() }]));
+    const graph = { docs, idf: () => 1, w: (a, b) => (a <= 6 && b <= 6 ? 0.5 : 0) };
+    const out = consolidate([{ ids: [1, 2, 3, 4] }, { ids: [5, 6] }, { ids: [7] }], graph, { minSize: 4, merge: 0.12, mergedMax: 24 });
+    expect(out.map((g) => g.ids.sort())).toEqual([[1, 2, 3, 4, 5, 6]]);
+  });
+  test('goals with the same name merge instead of becoming "Growth 2"', async () => {
+    const { mergeSameNames } = await import('../../src/bg/grouping.js');
+    const out = mergeSameNames([{ name: 'Growth', ids: [1, 2] }, { name: 'Hiring', ids: [3] }, { name: 'growth', ids: [4] }, { name: 'Growth 2', ids: [5] }]);
+    expect(out).toEqual([{ name: 'Growth', ids: [1, 2, 4, 5] }, { name: 'Hiring', ids: [3] }]);
+  });
+  test('Group folds older "Growth" / "Growth 2" Tab Land groups into one, and leaves your own alone', async () => {
+    const h = await harness({ settings: { jevApiKey: '' } });
+    const a = await h.fake.open('https://a.example.com/1', { title: 'One' });
+    const b = await h.fake.open('https://a.example.com/2', { title: 'Two' });
+    const c = await h.fake.open('https://a.example.com/3', { title: 'Three' });
+    const d = await h.fake.open('https://a.example.com/4', { title: 'Four' });
+    const mk = async (ids, title) => { const gid = await h.chrome.tabs.group({ tabIds: ids }); await h.chrome.tabGroups.update(gid, { title }); return gid; };
+    await mk([a], 'Growth'); await mk([b], 'Growth 2'); await mk([c], 'Notes'); await mk([d], 'Notes 2');
+    h.ctx.state.managedGroups.push('Growth', 'Growth 2');
+    await h.send({ type: 'group' });
+    const titles = h.fake.allGroups().map((g) => g.title).sort();
+    expect(titles).toEqual(['Growth', 'Notes', 'Notes 2']);
+    expect(h.fake.tab(a).groupId).toBe(h.fake.tab(b).groupId);
+  });
+  test('with a minimum of 4, Group makes no 2–3 tab groups', async () => {
+    const h = await harness({ settings: { jevApiKey: '', minGroupSize: 4 } });
+    await h.fake.open('https://linear.app/acme/issue/ENG-482/billing-retry-fails', { title: 'ENG-482 Billing retry fails for NJ claims' });
+    await h.fake.open('https://github.com/acme/api/pull/91', { title: 'Fix billing retry backoff (ENG-482) · Pull Request #91 · acme/api' });
+    await h.fake.open('https://docs.google.com/document/d/abc', { title: 'Billing retry runbook - Google Docs' });
+    const r = await h.send({ type: 'group' });
+    expect(r.groups).toEqual([]);
+    expect(h.fake.allGroups()).toHaveLength(0);
+  });
+});

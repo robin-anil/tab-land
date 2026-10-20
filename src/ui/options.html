@@ -65,6 +65,7 @@
       <p class="muted">How Tab Land decides which tabs belong together.</p>
       <label class="choice"><input type="radio" name="groupingMode" value="goals"> <span><b>By goal</b> <span class="muted">(recommended)</span><br><span class="muted">Tabs that serve the same job, across any sites: the issue, its pull request, the runbook and the chat thread. Uses which tab opened which, what you switch between, and what titles share.</span></span></label>
       <label class="choice"><input type="radio" name="groupingMode" value="useCases"> <span><b>By use case</b><br><span class="muted">The kind of work, from the list below (Engineering, Hiring, Growth…).</span></span></label>
+      <label class="toggle">Make groups of at least <input type="number" id="minGroupSize" min="2" max="10" class="tiny"> tabs <span class="muted">(smaller clusters join the goal they fit best, or stay ungrouped)</span></label>
       <label class="toggle"><input type="checkbox" id="readPageText"> Read page descriptions and headings to understand tabs better <span class="muted">(runs in your browser, never sent; asks for page access)</span></label>
       <div class="regroup-box">
         <div>
